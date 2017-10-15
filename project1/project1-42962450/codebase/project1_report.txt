@@ -1,0 +1,27 @@
+1. Basic information
+Student ID : 42962450 
+Student Name : Hao Tang
+OS (bit) : Mac
+gcc version : 4.2.1
+
+
+2. Internal Record Format
+- Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that you haven't implemented this feature.
+- Describe how you store a VarChar field.
+Before storing the real data, I add another field which consists of the number of fields integers indicating the offset of the field into this record. If a field is null then the offset would just be -1. The following graph shows the format of internal record. 
+offset_field1(int)|offset_field2(int)|...|offset_fieldn(int)|length_of_data|data
+
+For storing the VarChar field, I first store the length of the value(int), followed by the value.
+
+3. Page Format
+- Show your page format design
+The page format consists of one integer storing the space already been used within this page, followed by all the records stored in the page. The following graph shows the format of page, the "record" represents an abbreviation of record format demonstrated in 2.
+total|record1|record2|record3|...|recordn
+
+4. Implementation Detail
+- Other implementation details goes here.
+
+
+5. Other (optional)
+- Freely use this section to tell us about things that are related to the project 1, but not related to the other sections (optional)
+
