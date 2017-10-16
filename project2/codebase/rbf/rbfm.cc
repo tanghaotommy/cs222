@@ -253,6 +253,13 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     int nFields = recordDescriptor.size();
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
     unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
+// #ifdef DEBUG
+//     for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
+//     {
+//         printf("%d ", nullFieldsIndicator[i]);
+//     }
+//     printf("\n");
+// #endif
     for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
     {
         nullFieldsIndicator[i] = ((char *)data)[i];
@@ -474,6 +481,10 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
 #endif
     if (recordLength + (nFields + 1) * sizeof(int) == oldRecordLength)
     {
+        for (int i = 0; i < nFields; ++i)
+        {
+            memcpy((char *)page + offset + (i + 1) * sizeof(int), &indexList[i], sizeof(int));
+        }
         memcpy((char *)page + offset + (nFields + 1) * sizeof(int), data, recordLength);
         fileHandle.writePage(cPage, page);   
     } else if (recordLength + (nFields + 1) * sizeof(int) < oldRecordLength)
@@ -652,7 +663,38 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
   const vector<string> &attributeNames, // a list of projected attributes
   RBFM_ScanIterator &rbfm_ScanIterator)
 {
+    rbfm_ScanIterator.compOp = compOp;
+    rbfm_ScanIterator.value = value;
+    rbfm_ScanIterator.recordDescriptor = recordDescriptor;
+    rbfm_ScanIterator.attributePositions = new int[attributeNames.size()];
+    rbfm_ScanIterator.fileHandle = &fileHandle;
+    rbfm_ScanIterator.attributeNames = attributeNames;
 
+    for (int i = 0; i < attributeNames.size(); ++i)
+    {
+        int j;
+        for (j = 0; i < recordDescriptor.size(); ++j)
+        {
+            if (recordDescriptor[j].name == attributeNames[i])
+            {
+                rbfm_ScanIterator.attributePositions[i] = j;
+                break;
+            }
+        }
+        if (j == recordDescriptor.size())
+            return -1;
+    }
+    int i;
+    for (i = 0; i < recordDescriptor.size(); ++i)
+    {
+        if (recordDescriptor[i].name == conditionAttribute)
+        {
+            rbfm_ScanIterator.conditionAttributePosition = i;
+            break;
+        }
+    }
+    if (i == recordDescriptor.size())
+        return -1;
     return 0;
 }
 
@@ -672,21 +714,24 @@ RC RBFM_ScanIterator::close()
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 {
     void * page = malloc(PAGE_SIZE);
-    fileHandle.readPage(cPage, page);
+    fileHandle->readPage(cPage, page);
     int nSlots;
     memcpy(&nSlots, (char *)page + PAGE_SIZE - sizeof(int), sizeof(int));
 
     while (1)
     {
         cSlot++;
+#ifdef DEBUG
+        printf("current page: %d, current slot:%d\n", cPage, cSlot);
+#endif
         if (cSlot > nSlots - 1)
         {
             cPage++;
             cSlot = 0;
-            fileHandle.readPage(cPage, page);
+            fileHandle->readPage(cPage, page);
             memcpy(&nSlots, (char *)page + PAGE_SIZE - sizeof(int), sizeof(int));
         }
-        if (cPage > fileHandle.getNumberOfPages() - 1)
+        if (cPage > fileHandle->getNumberOfPages() - 1)
         {
             return RBFM_EOF;
         }
@@ -694,6 +739,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
         int offset;
         
         bool valid = true;
+        bool satisfied = false;
         memcpy(&offset, (char *)page + PAGE_SIZE - (cSlot + 2) * sizeof(int), sizeof(int));
         if (offset == -1)
             valid = false;
@@ -702,7 +748,192 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 
         if (valid)
         {
-            
+            int offset;
+            memcpy(&offset, (char *)page + PAGE_SIZE - (cSlot + 2) * sizeof(int), sizeof(int));
+
+            //Has been deleted
+            if (offset == -1)
+                return 1;
+            int recordLength;
+            memcpy(&recordLength, (char *)page + offset, sizeof(int));
+
+            //Update to new place
+            while (recordLength == -1)
+            {
+                int tPage;
+                int tSlot;
+                memcpy(&tPage, (char *)page + offset + sizeof(int), sizeof(int));
+                memcpy(&tSlot, (char *)page + offset + 2 * sizeof(int), sizeof(int));
+                fileHandle->readPage(tPage, page);
+                memcpy(&offset, (char *)page + PAGE_SIZE - (tSlot + 2) * sizeof(int), sizeof(int));
+                memcpy(&recordLength, (char *)page + offset, sizeof(int));
+            }
+            int nFields = recordDescriptor.size();
+            int dataOffset = offset + (nFields + 1) * sizeof(int);
+            int attrOffset;
+            memcpy(&attrOffset, (char *)page + offset + (conditionAttributePosition + 1) * sizeof(int), sizeof(int));
+#ifdef DEBUG
+            printf("offset: %d, dataOffset: %d, attrOffset: %d, conditionAttributePosition: %d\n",
+                offset, dataOffset, attrOffset, conditionAttributePosition);
+#endif
+            if (recordDescriptor[conditionAttributePosition].type == TypeInt)
+            {
+                int value;
+                memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[conditionAttributePosition].length);
+                int searchValue;
+                memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
+#ifdef DEBUG
+                printf("value: %d, searchValue: %d\n", value, searchValue);
+#endif
+                
+                switch (compOp)
+                {
+                    case EQ_OP:
+                        satisfied = value == searchValue;
+                        break;
+                    case LT_OP:
+                        satisfied = value < searchValue;
+                        break;
+                    case LE_OP:
+                        satisfied = value <= searchValue;
+                        break;
+                    case GT_OP:
+                        satisfied = value > searchValue;
+                        break;
+                    case GE_OP:
+                        satisfied = value >= searchValue;
+                        break;
+                    case NE_OP:
+                        satisfied = value != searchValue;
+                        break;
+                    case NO_OP:
+                        satisfied = true;
+                        break;
+                }
+            }
+            if (recordDescriptor[conditionAttributePosition].type == TypeReal)
+            {
+                float value;
+                memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[conditionAttributePosition].length);
+                float searchValue;
+                memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
+                
+                switch (compOp)
+                {
+                    case EQ_OP:
+                        satisfied = value == searchValue;
+                        break;
+                    case LT_OP:
+                        satisfied = value < searchValue;
+                        break;
+                    case LE_OP:
+                        satisfied = value <= searchValue;
+                        break;
+                    case GT_OP:
+                        satisfied = value > searchValue;
+                        break;
+                    case GE_OP:
+                        satisfied = value >= searchValue;
+                        break;
+                    case NE_OP:
+                        satisfied = value != searchValue;
+                        break;
+                    case NO_OP:
+                        satisfied = true;
+                        break;
+                }
+            }
+            if (recordDescriptor[conditionAttributePosition].type == TypeVarChar)
+            {
+                int nameLength;
+                memcpy(&nameLength, (char *)page + dataOffset + attrOffset, sizeof(int));
+                char* value_c = (char *) malloc(nameLength + 1);
+                memcpy(value_c, (char *)page + dataOffset + attrOffset + sizeof(int), nameLength);
+                value_c[nameLength] = '\0';
+                string searchValue = string((char *) this->value);
+                string value = string(value_c);
+#ifdef DEBUG
+                printf("name length: %d, value: %s, searchValue: %s\n", nameLength, value.c_str(), searchValue.c_str());
+#endif
+
+                switch (compOp)
+                {
+                    case EQ_OP:
+                        satisfied = value == searchValue;
+                        break;
+                    case LT_OP:
+                        satisfied = value < searchValue;
+                        break;
+                    case LE_OP:
+                        satisfied = value <= searchValue;
+                        break;
+                    case GT_OP:
+                        satisfied = value > searchValue;
+                        break;
+                    case GE_OP:
+                        satisfied = value >= searchValue;
+                        break;
+                    case NE_OP:
+                        satisfied = value != searchValue;
+                        break;
+                    case NO_OP:
+                        satisfied = true;
+                        break;
+                }
+            }
+
+            if (satisfied)
+            {
+#ifdef DEBUG
+                printf("Satisfied!\n");
+#endif
+                int nFields = attributeNames.size();
+                int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
+                unsigned char *nullsIndicator = (unsigned char *) malloc(nullFieldsIndicatorActualSize);
+                int returnDataOffset = nullFieldsIndicatorActualSize;
+                memset(nullsIndicator, 0, nullFieldsIndicatorActualSize);
+                for (int i = 0; i < attributeNames.size(); ++i)
+                {
+                    memcpy(&attrOffset, (char *)page + offset + (attributePositions[i] + 1) * sizeof(int), sizeof(int));
+                    if (attrOffset == -1)
+                    {
+                        int nByte = i / 8;
+                        int nBit = i % 8;
+                        nullsIndicator[nByte] |= (1 << (7 - nBit));
+                        // bool nullBit = nullFieldsIndicator[nByte] & (1 << (7 - nBit)); 
+                    } else
+                    {
+                        if (recordDescriptor[attributePositions[i]].type == TypeInt)
+                        {
+                            int value;
+                            memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[attributePositions[i]].length);
+                            memcpy((char *)data + returnDataOffset, &value, recordDescriptor[attributePositions[i]].length);
+                            returnDataOffset += recordDescriptor[attributePositions[i]].length;
+                        }
+                        if (recordDescriptor[attributePositions[i]].type == TypeReal)
+                        {
+                            float value;
+                            memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[attributePositions[i]].length);
+                            memcpy((char *)data + returnDataOffset, &value, recordDescriptor[attributePositions[i]].length);
+                            returnDataOffset += recordDescriptor[attributePositions[i]].length;
+                        }
+                        if (recordDescriptor[attributePositions[i]].type == TypeVarChar)
+                        {
+                            int nameLength;
+                            memcpy(&nameLength, (char *)page + dataOffset + attrOffset, sizeof(int));
+                            memcpy((char *)data + returnDataOffset, &nameLength, sizeof(int));
+                            returnDataOffset += sizeof(int);
+                            
+                            char* value = (char *) malloc(nameLength);
+                            memcpy(value, (char *)page + dataOffset + attrOffset + sizeof(int), nameLength);
+                            memcpy((char *)data + returnDataOffset, value, nameLength);
+                            returnDataOffset += nameLength;
+                        }   
+                    }
+                }
+                memcpy((char *)data, nullsIndicator, nullFieldsIndicatorActualSize);
+                return 0;
+            }
         }
     }
     free(page);

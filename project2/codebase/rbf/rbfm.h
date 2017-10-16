@@ -66,14 +66,15 @@ public:
   RC getNextRecord(RID &rid, void *data);
   RC close();
 
-private:
   int cPage;
   int cSlot;
-  FileHandle fileHandle;
+  FileHandle *fileHandle;
   vector<Attribute> recordDescriptor;
-  string conditionAttribute;
+  int conditionAttributePosition;
   CompOp compOp;
-  void *value; 
+  const void *value; 
+  int *attributePositions;
+  vector<string> attributeNames;
 };
 
 
