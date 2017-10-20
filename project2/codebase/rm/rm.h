@@ -4,7 +4,7 @@
 
 #include <string>
 #include <vector>
-
+#include <cstring>
 #include "../rbf/rbfm.h"
 
 using namespace std;
@@ -18,8 +18,10 @@ public:
   ~RM_ScanIterator() {};
 
   // "data" follows the same format as RelationManager::insertTuple()
-  RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
+  RC getNextTuple(RID &rid, void *data);
   RC close() { return -1; };
+  RBFM_ScanIterator* rbfmScanIterator;
+  
 };
 
 
@@ -52,7 +54,13 @@ public:
   RC printTuple(const vector<Attribute> &attrs, const void *data);
 
   RC readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data);
-
+  RC getTableId();
+  RC prepareCatalogTableDescriptor(vector<Attribute> &attributes);
+  RC prepareCatalogColumnDescriptor(vector<Attribute> &attributes);
+  RC prepareTablesRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,const string tablename);
+  RC prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,Attribute attr, int position);
+  RC insertColumn(int tableid, const vector<Attribute> &attributes);
+    
   // Scan returns an iterator to allow the caller to go through the results one by one.
   // Do not store entire results in the scan iterator.
   RC scan(const string &tableName,
@@ -72,7 +80,7 @@ public:
 protected:
   RelationManager();
   ~RelationManager();
-
+  RecordBasedFileManager* rbfm;
 };
 
 #endif
