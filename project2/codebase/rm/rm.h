@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <cmath>
 #include "../rbf/rbfm.h"
 
 using namespace std;
@@ -19,7 +20,7 @@ public:
 
   // "data" follows the same format as RelationManager::insertTuple()
   RC getNextTuple(RID &rid, void *data);
-  RC close() { return -1; };
+  RC close();
   RBFM_ScanIterator* rbfmScanIterator;
   
 };
