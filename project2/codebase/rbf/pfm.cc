@@ -110,6 +110,8 @@ RC FileHandle::openFile(const string &fileName)
 {
     try
     {
+        if(!fexists(fileName.c_str()))
+            return 1;
         fs.open(fileName);
         this->readCounter();
     }
