@@ -293,8 +293,9 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
                 memcpy(&nameLength, (char *)data + offset, sizeof(int));
                 offset += sizeof(int);
                 // printf("String length: %d\n", nameLength);
-                char* value = (char *) malloc(nameLength);
+                char* value = (char *) malloc(nameLength + 1);
                 memcpy(value, (char *)data + offset, nameLength);
+                value[nameLength] = '\0';
                 offset += nameLength;
                 printf("%s: %-10s\t", recordDescriptor[i].name.c_str(), value);
             }          
@@ -722,7 +723,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
     {
         cSlot++;
 #ifdef DEBUG
-        printf("current page: %d, current slot:%d\n", cPage, cSlot);
+        printf("current page: %d, current slot:%d, total pages: %d, total slots: %d\n", cPage, cSlot, fileHandle->getNumberOfPages(), nSlots);
 #endif
         if (cSlot > nSlots - 1)
         {

@@ -21,7 +21,8 @@ public:
   // "data" follows the same format as RelationManager::insertTuple()
   RC getNextTuple(RID &rid, void *data);
   RC close();
-  RBFM_ScanIterator* rbfmScanIterator;
+  RBFM_ScanIterator rbfm_ScanIterator;
+  FileHandle fileHandle;
   
 };
 
@@ -55,11 +56,12 @@ public:
   RC printTuple(const vector<Attribute> &attrs, const void *data);
 
   RC readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data);
-  RC getTableId();
+  RC getTableId(const string &tableName, int &tableId);
   RC prepareCatalogTableDescriptor(vector<Attribute> &attributes);
   RC prepareCatalogColumnDescriptor(vector<Attribute> &attributes);
   RC prepareTablesRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,const string tablename);
   RC prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,Attribute attr, int position);
+  RC getFileNameByTableName(const string &tableName, string &fileName);
   RC insertColumn(int tableid, const vector<Attribute> &attributes);
     
   // Scan returns an iterator to allow the caller to go through the results one by one.

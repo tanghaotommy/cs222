@@ -87,7 +87,9 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	if(rbfm->openFile("Tables", filehandle)!=0){
 		return -1;
 	}
-	int tableId = getTableId();
+	static int tableId = 2;
+	tableId++;
+
 	RID rid;
 	prepareCatalogTableDescriptor(tablesdescriptor);
 	prepareTablesRecord(tablesdescriptor, data,tableId,tableName);
@@ -105,7 +107,8 @@ RC RelationManager::deleteTable(const string &tableName)
 {
 	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
 	FileHandle fileHandle;
-	rbfm->openFile("Tables", fileHandle);
+	if(rbfm->openFile("Tables", fileHandle) != 0)
+		return -1;
 	vector<Attribute> recordDescriptor;
 	prepareCatalogTableDescriptor(recordDescriptor);
 	string conditionAttribute = "table-name";
@@ -142,7 +145,7 @@ RC RelationManager::deleteTable(const string &tableName)
 		memcpy(fileName_c, (char *)data + offset, nameLength);
 		fileName_c[nameLength] = '\0';
 		fileName = string(fileName_c);
-		printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d\n", nameLength, fileName.c_str(), fileName_c, tableId);
+		// printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d\n", nameLength, fileName.c_str(), fileName_c, tableId);
 	}
 	else return -1;
 	rbfm_ScanIterator.close();
@@ -195,120 +198,167 @@ RC RelationManager::deleteTable(const string &tableName)
 	return 0;
 }
 
+bool sortByPosition(const pair<int, Attribute> &a,
+          const pair<int, Attribute> &b)
+{
+    return (a.first < b.first);
+}
+
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-	RM_ScanIterator rm_ScanIterator;
-	RID rid;
-	int tableid;
-	char *data=(char *)malloc(PAGE_SIZE);
-	vector<string> attrname;
-	attrname.push_back("column-name");
-	attrname.push_back("column-type");
-	attrname.push_back("column-length");
-	attrname.push_back("column-position");
-	Attribute attr;
-	string tempstr;
-	
-	
-	tableid=getTableId();  
-	if( tableid == -1 ) return -1;
+// 	int tableId;
+// 	if(this->getTableId(tableName, tableId) != 0)
+// 		return -1;
+// 	printf("TableId: %d\n", tableId);
 
-	if(scan("Columns","table-id",EQ_OP,&tableid,attrname,rm_ScanIterator) != 0 ){
+// 	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
+// 	FileHandle fileHandle;
+// 	if(rbfm->openFile("Columns", fileHandle) != 0)
+// 		return -1;
+// 	vector<Attribute> recordDescriptor;
+// 	prepareCatalogColumnDescriptor(recordDescriptor);
+// 	string conditionAttribute = "table-id";
+// 	void *value = malloc(sizeof(int));
+// 	memcpy(value, &tableId, sizeof(int));
+// 	vector<string> attributeNames;
+	
+// 	attributeNames.push_back("table-id");
+// 	attributeNames.push_back("column-name");
+// 	attributeNames.push_back("column-type");
+// 	attributeNames.push_back("column-length");
+// 	attributeNames.push_back("column-position");
+// 	CompOp compOp = EQ_OP;
+// 	RBFM_ScanIterator rbfm_ScanIterator;
+
+// 	rbfm->scan(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames, rbfm_ScanIterator);
+
+// 	RID rid;
+// 	void *data = malloc(PAGE_SIZE);
+// 	string fileName;
+
+// 	vector<Attribute> attributes;
+// 	vector< pair <int, Attribute> > vect;
+// 	while(rbfm_ScanIterator.getNextRecord(rid, data) != RBFM_EOF)
+// 	{
+// 		Attribute attr;
+// 		int offset = ceil((double) attributeNames.size() / CHAR_BIT);
+// 		rbfm->printRecord(recordDescriptor, data);
+// 		memcpy(&tableId, (char *)data + offset, sizeof(int));
+// 		offset += sizeof(int);
+// 		int nameLength;
+// 		memcpy(&nameLength, (char *)data + offset, sizeof(int));
+// 		offset += sizeof(int);
+// 		char *fileName_c = (char*) malloc(nameLength + 1);
+// 		memcpy(fileName_c, (char *)data + offset, nameLength);
+// 		fileName_c[nameLength] = '\0';
+// 		fileName = string(fileName_c);
+// 		offset += nameLength;
+// 		AttrType columnType;
+// 		memcpy(&columnType, (char *)data + offset, sizeof(AttrType));
+// 		offset += sizeof(AttrType);
+// 		int columnLength;
+// 		memcpy(&columnLength, (char *)data + offset, sizeof(int));
+// 		offset += sizeof(int);
+// 		int columnPosition;
+// 		memcpy(&columnPosition, (char *)data + offset, sizeof(int));
+// #ifdef DEBUG
+// 		printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d, type: %d, column-length:%d, column-position: %d\n", 
+// 			nameLength, fileName.c_str(), fileName_c, tableId, columnType, columnLength, columnPosition);
+// #endif
+// 		attr.name = fileName;
+// 		attr.type = columnType;
+// 		attr.length = columnLength;
+// 		vect.push_back(make_pair(columnPosition, attr));
+// 		// attrs.push_back(attr);
+// 	}
+// 	rbfm_ScanIterator.close();
+
+	int tableId;
+	if(this->getTableId(tableName, tableId) != 0)
 		return -1;
-	}
-	while(rm_ScanIterator.getNextTuple(rid,data) != RM_EOF){
-		int offset = 1;
-		memcpy(&columnNameLength, data + offset, sizeof(int));
+	printf("TableId: %d\n", tableId);
+
+	vector<Attribute> recordDescriptor;
+	prepareCatalogColumnDescriptor(recordDescriptor);
+	string conditionAttribute = "table-id";
+	void *value = malloc(sizeof(int));
+	memcpy(value, &tableId, sizeof(int));
+	vector<string> attributeNames;
+	
+	attributeNames.push_back("table-id");
+	attributeNames.push_back("column-name");
+	attributeNames.push_back("column-type");
+	attributeNames.push_back("column-length");
+	attributeNames.push_back("column-position");
+	CompOp compOp = EQ_OP;
+	RM_ScanIterator rm_ScanIterator;
+
+	this->scan("Columns", conditionAttribute, compOp, value, attributeNames, rm_ScanIterator);
+
+	RID rid;
+	void *data = malloc(PAGE_SIZE);
+	string fileName;
+
+	vector<Attribute> attributes;
+	vector< pair <int, Attribute> > vect;
+	while(rm_ScanIterator.getNextTuple(rid, data) != RM_EOF)
+	{
+		Attribute attr;
+		int offset = ceil((double) attributeNames.size() / CHAR_BIT);
+		rbfm->printRecord(recordDescriptor, data);
+		memcpy(&tableId, (char *)data + offset, sizeof(int));
 		offset += sizeof(int);
-		char columnNameCharArray[columnNameLength + 1];
-        memcpy(&columnNameCharArray,data + offset, columnNameLength);
-        columnNameCharArray[columnNameLength] = '\0';
-        string columnName(columnNameCharArray);
-        offset += columnNameLength;
-		memcpy(&(attr.type),data + offset,sizeof(int));
-		offset+=sizeof(int);
-		memcpy(&(attr.length),data + offset,sizeof(int));
-		offset+=sizeof(int);
-		memcpy(&(attr.position),data + offset,sizeof(int));
-		offset+=sizeof(int);
-		attrs.push_back(attr);
+		int nameLength;
+		memcpy(&nameLength, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		char *fileName_c = (char*) malloc(nameLength + 1);
+		memcpy(fileName_c, (char *)data + offset, nameLength);
+		fileName_c[nameLength] = '\0';
+		fileName = string(fileName_c);
+		offset += nameLength;
+		AttrType columnType;
+		memcpy(&columnType, (char *)data + offset, sizeof(AttrType));
+		offset += sizeof(AttrType);
+		int columnLength;
+		memcpy(&columnLength, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		int columnPosition;
+		memcpy(&columnPosition, (char *)data + offset, sizeof(int));
+#ifdef DEBUG
+		printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d, type: %d, column-length:%d, column-position: %d\n", 
+			nameLength, fileName.c_str(), fileName_c, tableId, columnType, columnLength, columnPosition);
+#endif
+		attr.name = fileName;
+		attr.type = columnType;
+		attr.length = columnLength;
+		vect.push_back(make_pair(columnPosition, attr));
+		// attrs.push_back(attr);
 	}
 	rm_ScanIterator.close();
-	free(data);
+
+	sort(vect.begin(), vect.end(), sortByPosition);
+	// printf("%s\n", vect[0].second.name.c_str());
+	for (int i = 0; i < vect.size(); ++i)
+	{
+		attrs.push_back(vect[i].second);
+	}
+	// else return -1;
 	return 0;
 }
 
 RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
-	FileHandle filehandle;
-	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
-	vector<Attribute> descriptor;
-	if(IsSystemTable(tableName) != 0){
+	FileHandle fileHandle;
+	vector<Attribute> recordDescriptor;
+	string fileName;
+	if (getFileNameByTableName(tableName, fileName) != 0)
+		return -1;
+	getAttributes(tableName, recordDescriptor);
+	if(rbfm->openFile(tableName, fileHandle) != 0){
 		return -1;
 	}
-	getAttributes(tableName,descriptor);
-	if(rbfm->openFile(tableName,filehandle) != 0){
-		return -1;
-	}
-	rbfm->insertRecord(filehandle,descriptor,data,rid);
-	if(_rbfm->closeFile(fileHandle) != 0)
-    {
-        return -1;
-    }
-	return 0;
-}
-
-RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
-{
-	RM_ScanIterator rm_ScanIterator;
-	RID rid;
-	int tableid;
-	char *data=(char *)malloc(PAGE_SIZE);
-	vector<string> attrname;
-	attrname.push_back("column-name");
-	attrname.push_back("column-type");
-	attrname.push_back("column-length");
-	attrname.push_back("column-position");
-	Attribute attr;
-	string tempstr;
-	
-	tableid=getTableId();  
-
-	if(scan("Columns","table-id",EQ_OP,&tableid,attrname,rm_ScanIterator) != 0 ){
-		return -1;
-	}
-	while(rm_ScanIterator.getNextTuple(rid,data) != RM_EOF){
-		int offset = 1;
-		int columnNameLength;
-		memcpy(&columnNameLength, data + offset, sizeof(int));
-		offset += sizeof(int);
-		char columnNameCharArray[columnNameLength + 1];
-        memcpy(&columnNameCharArray,data + offset, columnNameLength);
-        columnNameCharArray[columnNameLength] = '\0';
-		string columnName(columnNameCharArray);
-		
-        offset += columnNameLength;
-		memcpy(&(attr.type),data + offset,sizeof(int));
-		offset+=sizeof(int);
-		memcpy(&(attr.length),data + offset,sizeof(int));
-		offset+=sizeof(int);
-		attrs.push_back(attr);
-	}
-	rm_ScanIterator.close();
-	free(data);
-	return 0;
-}
-
-RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
-{
-	FileHandle filehandle;
-	vector<Attribute> descriptor;
-	getAttributes(tableName,descriptor);
-	if(rbfm->openFile(tableName,filehandle) != 0){
-		return -1;
-	}
-	rbfm->insertRecord(filehandle,descriptor,data,rid);
-	if(rbfm->closeFile(filehandle) != 0)
+	rbfm->insertRecord(fileHandle, recordDescriptor, data, rid);
+	if(rbfm->closeFile(fileHandle) != 0)
     {
         return -1;
     }
@@ -417,27 +467,26 @@ RC RelationManager::scan(const string &tableName,
       const vector<string> &attributeNames,
       RM_ScanIterator &rm_ScanIterator)
 {
-	FileHandle filehandle;
-	vector<Attribute> descriptor;
-	if(tableName.compare("Tables")==0){
-		prepareCatalogTableDescriptor(descriptor);
-	}
-	else if(tableName.compare("Columns")==0){
-		prepareCatalogColumnDescriptor(descriptor);
-	}
-	else{
-		getAttributes(tableName,descriptor);
-	}
-	if(rbfm->openFile(tableName,filehandle)!=0){
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();	
+	string fileName;
+	vector <Attribute> recordDescriptor;
+	if (tableName == "Tables")
+		prepareCatalogTableDescriptor(recordDescriptor);
+	else if (tableName == "Columns")
+		prepareCatalogColumnDescriptor(recordDescriptor);
+	else
+		getAttributes(tableName, recordDescriptor);
+	if (getFileNameByTableName(tableName, fileName) != 0)
+		return -1;
+	// printf("%s\n", fileName.c_str());
+	if(rbfm->openFile(fileName, rm_ScanIterator.fileHandle) != 0){
 		return -1;
 	}
-	RBFM_ScanIterator* rbfmScanIterator = new RBFM_ScanIterator();
-	if(rbfm->scan(filehandle,descriptor,conditionAttribute,compOp,value,attributeNames,*rbfmScanIterator)!=0){
+	// RBFM_ScanIterator rbfm_ScanIterator;
+	if(rbfm->scan(rm_ScanIterator.fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.rbfm_ScanIterator) != 0){
 		return -1;
 	}
-	//rm_ScanIterator.setRBFMSI(rbfmScanIterator);
 	return 0;
-
 }
 
 // Extra credit work
@@ -450,6 +499,54 @@ RC RelationManager::dropAttribute(const string &tableName, const string &attribu
 RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 {
     return -1;
+}
+
+RC RelationManager::getFileNameByTableName(const string &tableName, string &fileName)
+{
+	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
+	FileHandle fileHandle;
+	if(rbfm->openFile("Tables", fileHandle) != 0)
+		return -1;
+	vector<Attribute> recordDescriptor;
+	prepareCatalogTableDescriptor(recordDescriptor);
+	string conditionAttribute = "table-name";
+	char *value = (char *)malloc(tableName.length() + 1);
+	memcpy(value, tableName.c_str(), tableName.length());
+	value[tableName.length()] = '\0';
+	vector<string> attributeNames;
+	string attributeName = "table-id";
+	attributeNames.push_back(attributeName);
+	attributeName = "table-name";
+	attributeNames.push_back(attributeName);
+	attributeName = "file-name";
+	attributeNames.push_back(attributeName);
+	CompOp compOp = EQ_OP;
+	RBFM_ScanIterator rbfm_ScanIterator;
+
+	rbfm->scan(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames, rbfm_ScanIterator);
+
+	RID rid;
+	void *data = malloc(PAGE_SIZE);
+	int tableId;
+
+	if(rbfm_ScanIterator.getNextRecord(rid, data) != RBFM_EOF)
+	{
+		int offset = 1;
+		rbfm->printRecord(recordDescriptor, data);
+		memcpy(&tableId, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		int nameLength;
+		memcpy(&nameLength, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		char *fileName_c = (char*) malloc(nameLength + 1);
+		memcpy(fileName_c, (char *)data + offset, nameLength);
+		fileName_c[nameLength] = '\0';
+		fileName = string(fileName_c);
+		// printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d\n", nameLength, fileName.c_str(), fileName_c, tableId);
+	}
+	else 
+		return -1;
+	return 0;
 }
 
 RC RelationManager::prepareCatalogTableDescriptor(vector<Attribute> &attributes){
@@ -565,13 +662,58 @@ RC RelationManager::insertColumn(int tableId, const vector<Attribute> &attribute
 	return 0;
 }
 
-RC RelationManager::getTableId(){
-	return 3;
+RC RelationManager::getTableId(const string &tableName, int &tableId){
+	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
+	FileHandle fileHandle;
+	if(rbfm->openFile("Tables", fileHandle) != 0)
+		return -1;
+	vector<Attribute> recordDescriptor;
+	prepareCatalogTableDescriptor(recordDescriptor);
+	string conditionAttribute = "table-name";
+	char *value = (char *)malloc(tableName.length() + 1);
+	memcpy(value, tableName.c_str(), tableName.length());
+	value[tableName.length()] = '\0';
+	vector<string> attributeNames;
+	string attributeName = "table-id";
+	attributeNames.push_back(attributeName);
+	attributeName = "table-name";
+	attributeNames.push_back(attributeName);
+	attributeName = "file-name";
+	attributeNames.push_back(attributeName);
+	CompOp compOp = EQ_OP;
+	RBFM_ScanIterator rbfm_ScanIterator;
+
+	rbfm->scan(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames, rbfm_ScanIterator);
+
+	RID rid;
+	void *data = malloc(PAGE_SIZE);
+	string fileName;
+	// int tableId;
+
+	if(rbfm_ScanIterator.getNextRecord(rid, data) != RBFM_EOF)
+	{
+		int offset = 1;
+		rbfm->printRecord(recordDescriptor, data);
+		memcpy(&tableId, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		int nameLength;
+		memcpy(&nameLength, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		char *fileName_c = (char*) malloc(nameLength + 1);
+		memcpy(fileName_c, (char *)data + offset, nameLength);
+		fileName_c[nameLength] = '\0';
+		fileName = string(fileName_c);
+#ifdef DEBUG
+		printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d\n", nameLength, fileName.c_str(), fileName_c, tableId);
+#endif
+	}
+	else return -1;
+	rbfm_ScanIterator.close();
+	return 0;
 }
 
 RC RM_ScanIterator::getNextTuple(RID &rid, void *data){
-	
-	if(rbfmScanIterator->getNextRecord(rid, data) != RBFM_EOF)
+	if(rbfm_ScanIterator.getNextRecord(rid, data) != RBFM_EOF)
     {
         return 0;
     } else
@@ -582,17 +724,13 @@ RC RM_ScanIterator::getNextTuple(RID &rid, void *data){
 
 RC RM_ScanIterator::close()
 {
-    if(rbfmScanIterator != NULL)
-    {
-        rbfmScanIterator->close();
-        delete rbfmScanIterator;
-        rbfmScanIterator = 0;
-    }
-    return 0;
-}
-
-RC RM_ScanIterator::setRBFMSI(RBFM_ScanIterator* r)
-{
-    this->rbfmScanIterator = r;
+    // if(rbfmScanIterator != NULL)
+    // {
+    //     rbfmScanIterator->close();
+    //     // delete rbfmScanIterator;
+    //     rbfmScanIterator = 0;
+    // }
+    rbfm_ScanIterator.close();
+    fileHandle.closeFile();
     return 0;
 }
