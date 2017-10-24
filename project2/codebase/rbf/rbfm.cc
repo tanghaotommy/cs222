@@ -305,33 +305,34 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
         
         memcpy(&cPage, (char *)page + offset + sizeof(int), sizeof(int));
         memcpy(&slotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
-#ifdef DEBUG
-        printf("[readRecord] stump points to (%d, %d)\n", cPage, slotNum);
-#endif
         fileHandle.readPage(cPage, page);
         int offset;
         memcpy(&offset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
         memcpy(&recordLength, (char *)page + offset, sizeof(int));
+#ifdef DEBUG
+        printf("[readRecord] stump points to (%d, %d); recordLength: %d, offset: %d\n", 
+            cPage, slotNum, recordLength, offset);
+#endif
     }
     // printf("recordlength: %d\n", recordLength);
     memcpy(data, (char *)page + offset + (nFields + 1) * sizeof(int), recordLength - (nFields + 1) * sizeof(int));
-    // printf("record length: %d\n", recordLength);
-    // this->printRecord(recordDescriptor, data);
+    printf("record length: %d\n", recordLength);
+    this->printRecord(recordDescriptor, data);
     return 0;
 }
 
 RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor, const void *data) {
-    // printf("Size of data: %d, data: %c\n", sizeof(data), ((char *)data)[0]);
+    printf("Size of data: %d, data: %c\n", sizeof(data), ((char *)data)[0]);
     int nFields = recordDescriptor.size();
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
     unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
-// #ifdef DEBUG
-//     for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
-//     {
-//         printf("[printRecord] %d ", nullFieldsIndicator[i]);
-//     }
-//     printf("\n");
-// #endif
+#ifdef DEBUG
+    for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
+    {
+        printf("[printRecord] %d ", nullFieldsIndicator[i]);
+    }
+    printf("\n");
+#endif
     for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
     {
         nullFieldsIndicator[i] = ((char *)data)[i];
@@ -570,8 +571,8 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     memcpy(&oldRecordLength, (char *)page + offset, sizeof(int));
 
 #ifdef DEBUG
-    printf("[updateRecord] record offset: %d, old record length: %d, new record length:%d\n", offset, 
-        oldRecordLength, recordLength + (nFields + 1) * sizeof(int));
+    printf("[updateRecord] record offset: %d, old record length: %d, new record length:%d, total: %d, left: %d\n", 
+        offset, oldRecordLength, recordLength + (nFields + 1) * sizeof(int), total, left);
 #endif
     if (recordLength + (nFields + 1) * sizeof(int) == oldRecordLength)
     {
@@ -597,7 +598,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         memcpy((char *)page + offset, &recordLength, sizeof(int));
         memcpy((char *)page + offset + (nFields + 1) * sizeof(int), data, recordLength - (nFields + 1) * sizeof(int));
 
-        total = total + (recordLength + (nFields + 1) * sizeof(int) - oldRecordLength);
+        total = total + (recordLength - oldRecordLength);
         memcpy((char *)page, &total, sizeof(int));
 
         offset += recordLength;
@@ -649,7 +650,9 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         memcpy((char *)page + offset, &recordLength, sizeof(int));
         memcpy((char *)page + offset + (nFields + 1) * sizeof(int), data, recordLength - (nFields + 1) * sizeof(int));
 
-        total = total + (recordLength + (nFields + 1) * sizeof(int) - oldRecordLength);
+        printf("[updateRecord] new: %d, old: %d, extra: %d\n", 
+            recordLength,  oldRecordLength, (recordLength - oldRecordLength));
+        total = total + (recordLength - oldRecordLength);
         memcpy((char *)page, &total, sizeof(int));
 
         offset += recordLength;
@@ -802,7 +805,12 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
             }
         }
         if (j == recordDescriptor.size())
+        {
+#ifdef DEBUG
+            printf("[rbfm::scan] Cannot find attributes Id\n");
+#endif
             return -1;
+        }
     }
     int i;
     for (i = 0; i < recordDescriptor.size(); ++i)
@@ -814,7 +822,22 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
         }
     }
     if (i == recordDescriptor.size())
-        return -1;
+    {
+        if (compOp != NO_OP)
+        {
+#ifdef DEBUG
+            printf("[rbfm::scan] Cannot find conditionAttributePosition\n");
+#endif
+            return -1;
+        }   
+        else
+        {
+#ifdef DEBUG
+            printf("[rbfm::scan] No op!\n");
+#endif 
+            rbfm_ScanIterator.conditionAttributePosition = -1;
+        }
+    }
     return 0;
 }
 
@@ -861,6 +884,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
         bool valid = true;
         bool satisfied = false;
         memcpy(&offset, (char *)page + PAGE_SIZE - (cSlot + 2) * sizeof(int), sizeof(int));
+
         if (offset == -1)
             valid = false;
         rid.slotNum = cSlot;
@@ -894,120 +918,127 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
             memcpy(&attrOffset, (char *)page + offset + (conditionAttributePosition + 1) * sizeof(int), sizeof(int));
 #ifdef DEBUG
             // printf("[getNextRecord] offset: %d, dataOffset: %d, attrOffset: %d, conditionAttributePosition: %d\n",
-                // offset, dataOffset, attrOffset, conditionAttributePosition);
+            //     offset, dataOffset, attrOffset, conditionAttributePosition);
 #endif
-            if (recordDescriptor[conditionAttributePosition].type == TypeInt)
+            if (compOp == NO_OP)
             {
-                int value;
-                memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[conditionAttributePosition].length);
-                int searchValue;
-                memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
+                satisfied = true;
+            }
+            else
+            {
+                if (recordDescriptor[conditionAttributePosition].type == TypeInt)
+                {
+                    int value;
+                    memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[conditionAttributePosition].length);
+                    int searchValue;
+                    memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
 #ifdef DEBUG
-                // printf("[getNextRecord] value: %d, searchValue: %d\n", value, searchValue);
+                    // printf("[getNextRecord] value: %d, searchValue: %d\n", value, searchValue);
 #endif
-                
-                switch (compOp)
-                {
-                    case EQ_OP:
-                        satisfied = value == searchValue;
-                        break;
-                    case LT_OP:
-                        satisfied = value < searchValue;
-                        break;
-                    case LE_OP:
-                        satisfied = value <= searchValue;
-                        break;
-                    case GT_OP:
-                        satisfied = value > searchValue;
-                        break;
-                    case GE_OP:
-                        satisfied = value >= searchValue;
-                        break;
-                    case NE_OP:
-                        satisfied = value != searchValue;
-                        break;
-                    case NO_OP:
-                        satisfied = true;
-                        break;
+                    
+                    switch (compOp)
+                    {
+                        case EQ_OP:
+                            satisfied = value == searchValue;
+                            break;
+                        case LT_OP:
+                            satisfied = value < searchValue;
+                            break;
+                        case LE_OP:
+                            satisfied = value <= searchValue;
+                            break;
+                        case GT_OP:
+                            satisfied = value > searchValue;
+                            break;
+                        case GE_OP:
+                            satisfied = value >= searchValue;
+                            break;
+                        case NE_OP:
+                            satisfied = value != searchValue;
+                            break;
+                        case NO_OP:
+                            satisfied = true;
+                            break;
+                    }
                 }
-            }
-            if (recordDescriptor[conditionAttributePosition].type == TypeReal)
-            {
-                float value;
-                memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[conditionAttributePosition].length);
-                float searchValue;
-                memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
-                
-                switch (compOp)
+                if (recordDescriptor[conditionAttributePosition].type == TypeReal)
                 {
-                    case EQ_OP:
-                        satisfied = value == searchValue;
-                        break;
-                    case LT_OP:
-                        satisfied = value < searchValue;
-                        break;
-                    case LE_OP:
-                        satisfied = value <= searchValue;
-                        break;
-                    case GT_OP:
-                        satisfied = value > searchValue;
-                        break;
-                    case GE_OP:
-                        satisfied = value >= searchValue;
-                        break;
-                    case NE_OP:
-                        satisfied = value != searchValue;
-                        break;
-                    case NO_OP:
-                        satisfied = true;
-                        break;
+                    float value;
+                    memcpy(&value, (char *)page + dataOffset + attrOffset, recordDescriptor[conditionAttributePosition].length);
+                    float searchValue;
+                    memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
+                    
+                    switch (compOp)
+                    {
+                        case EQ_OP:
+                            satisfied = value == searchValue;
+                            break;
+                        case LT_OP:
+                            satisfied = value < searchValue;
+                            break;
+                        case LE_OP:
+                            satisfied = value <= searchValue;
+                            break;
+                        case GT_OP:
+                            satisfied = value > searchValue;
+                            break;
+                        case GE_OP:
+                            satisfied = value >= searchValue;
+                            break;
+                        case NE_OP:
+                            satisfied = value != searchValue;
+                            break;
+                        case NO_OP:
+                            satisfied = true;
+                            break;
+                    }
                 }
-            }
-            if (recordDescriptor[conditionAttributePosition].type == TypeVarChar)
-            {
-                int nameLength;
-                memcpy(&nameLength, (char *)page + dataOffset + attrOffset, sizeof(int));
-                char* value_c = (char *) malloc(nameLength + 1);
-                memcpy(value_c, (char *)page + dataOffset + attrOffset + sizeof(int), nameLength);
-                value_c[nameLength] = '\0';
+                if (recordDescriptor[conditionAttributePosition].type == TypeVarChar)
+                {
+                    int nameLength;
+                    memcpy(&nameLength, (char *)page + dataOffset + attrOffset, sizeof(int));
+                    char* value_c = (char *) malloc(nameLength + 1);
+                    memcpy(value_c, (char *)page + dataOffset + attrOffset + sizeof(int), nameLength);
+                    value_c[nameLength] = '\0';
 
-                int searchValueLength;
-                memcpy(&searchValueLength, (char *)this->value, sizeof(int));
-                char* value_s = (char *) malloc(searchValueLength + 1);
-                memcpy(value_s, (char *) this->value + sizeof(int), searchValueLength);
-                value_s[searchValueLength] = '\0';
+                    int searchValueLength;
+                    memcpy(&searchValueLength, (char *)this->value, sizeof(int));
+                    char* value_s = (char *) malloc(searchValueLength + 1);
+                    memcpy(value_s, (char *) this->value + sizeof(int), searchValueLength);
+                    value_s[searchValueLength] = '\0';
 
-                string searchValue = string(value_s);
-                string value = string(value_c);
+                    string searchValue = string(value_s);
+                    string value = string(value_c);
 #ifdef DEBUG
-                // printf("[getNextRecord] name length: %d, value: %s, searchValue: %s, searchValueLength: %d\n", nameLength, value.c_str(), searchValue.c_str(), searchValueLength);
+                    // printf("[getNextRecord] name length: %d, value: %s, searchValue: %s, searchValueLength: %d\n", nameLength, value.c_str(), searchValue.c_str(), searchValueLength);
 #endif
 
-                switch (compOp)
-                {
-                    case EQ_OP:
-                        satisfied = value == searchValue;
-                        break;
-                    case LT_OP:
-                        satisfied = value < searchValue;
-                        break;
-                    case LE_OP:
-                        satisfied = value <= searchValue;
-                        break;
-                    case GT_OP:
-                        satisfied = value > searchValue;
-                        break;
-                    case GE_OP:
-                        satisfied = value >= searchValue;
-                        break;
-                    case NE_OP:
-                        satisfied = value != searchValue;
-                        break;
-                    case NO_OP:
-                        satisfied = true;
-                        break;
-                }
+                    switch (compOp)
+                    {
+                        case EQ_OP:
+                            satisfied = value == searchValue;
+                            break;
+                        case LT_OP:
+                            satisfied = value < searchValue;
+                            break;
+                        case LE_OP:
+                            satisfied = value <= searchValue;
+                            break;
+                        case GT_OP:
+                            satisfied = value > searchValue;
+                            break;
+                        case GE_OP:
+                            satisfied = value >= searchValue;
+                            break;
+                        case NE_OP:
+                            satisfied = value != searchValue;
+                            break;
+                        case NO_OP:
+                            satisfied = true;
+                            break;
+                    }
             }
+        }
 
             if (satisfied)
             {
