@@ -36,6 +36,23 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
     return PagedFileManager::instance()->closeFile(fileHandle);
 }
 
+bool hasDeletedSlot(void *page)
+{
+    int nSlot;
+    int insertSlot;
+    //Get total number of slots
+    memcpy(&nSlot, (char *)page + PAGE_SIZE - sizeof(int), sizeof(int));
+    int offset;
+    int lastLength;
+    for (int i = 0; i < nSlot; ++i)
+    {
+        memcpy(&offset, (char *)page + PAGE_SIZE - sizeof(int) - i * sizeof(int), sizeof(int));
+        if (offset == -1)
+            return true;
+    }
+    return false;
+}
+
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor, const void *data, RID &rid) {
     int nFields = recordDescriptor.size();
     // int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
@@ -128,7 +145,15 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 
     memcpy(&total, (char *)page, sizeof(int));   
     int recordLength = this->getRecordLength(recordDescriptor, data);
-    int left = PAGE_SIZE - 1 - total - sizeof(int) - nFields * sizeof(int) - sizeof(int);
+    int left = PAGE_SIZE - total - sizeof(int) - nFields * sizeof(int) - sizeof(int);
+
+    if (total != 0)
+    {
+        if(hasDeletedSlot(page))
+            left += sizeof(int);
+    }
+    else
+        left = PAGE_SIZE;
 
     if (left < recordLength)
     {
@@ -136,7 +161,9 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         {
             fileHandle.readPage(cPage, page);
             memcpy(&total, (char *)page, sizeof(int));
-            left = PAGE_SIZE - 1 - total - sizeof(int) - nFields * sizeof(int) - sizeof(int);
+            left = PAGE_SIZE - total - sizeof(int) - nFields * sizeof(int) - sizeof(int);
+            if (hasDeletedSlot(page))
+                left += sizeof(int);
             if (left >= recordLength)
                 break;
         }
@@ -146,9 +173,14 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
             cPage = fileHandle.getNumberOfPages() - 1;
         }
     }
-
+#ifdef DEBUG
+    printf("[insertRecord] total: %d\n", total);
+#endif
     if ( total == 0)
     {
+#ifdef DEBUG
+        printf("[insertRecord] append page\n");
+#endif
         cPage++;
         for (int i = 0; i < PAGE_SIZE; ++i)
         {
@@ -164,10 +196,11 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         // total += nFields * sizeof(int);
         rid.slotNum = 0;
         recordLength += (nFields + 1) * sizeof(int);
-        total += sizeof(int) + recordLength;
+        total += (2 * sizeof(int) + recordLength);
         // total += sizeof(int) * 2;
         memcpy((char *)page, &total, sizeof(int));
         memcpy((char *)page + sizeof(int), &recordLength, sizeof(int));
+        // printf("adding length: %d, total: %d\n", recordLength, total);
         memcpy((char *)page + (nFields + 2) * sizeof(int), data, recordLength);
 
         //Slot table
@@ -175,36 +208,68 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         memcpy((char *)page + PAGE_SIZE - sizeof(int), &size, sizeof(int));
         size = sizeof(int);
         memcpy((char *)page + PAGE_SIZE - 2 * sizeof(int), &size, sizeof(int));
+        memcpy(&size, (char *)page + PAGE_SIZE - 2 * sizeof(int), sizeof(int));
         fileHandle.appendPage(page);       
     }
     else
     {
+#ifdef DEBUG
+        printf("[insertRecord] write existing page\n");
+#endif
         int nSlot;
+        int insertSlot;
         //Get total number of slots
         memcpy(&nSlot, (char *)page + PAGE_SIZE - sizeof(int), sizeof(int));
         int offset;
-        memcpy(&offset, (char *)page + PAGE_SIZE - sizeof(int) - nSlot * sizeof(int), sizeof(int));
         int lastLength;
-        memcpy(&lastLength, (char *)page + offset, sizeof(int));
+        int i;
+        for (i = 0; i < nSlot; ++i)
+        {
+            // printf("[insertRecord] check slot %d\n", i);
+            memcpy(&offset, (char *)page + PAGE_SIZE - (i + 2) * sizeof(int), sizeof(int));
+            if (offset == -1)
+                break;
+        }
+        if (i == 0)
+        {
+            offset = 0;
+            lastLength = sizeof(int);
+            insertSlot = 0;
+        }
+        else
+        {
+            memcpy(&offset, (char *)page + PAGE_SIZE - (i + 1) * sizeof(int), sizeof(int));
+            memcpy(&lastLength, (char *)page + offset, sizeof(int));
+            insertSlot = i;
+        }
+        
         offset += lastLength;
+        rid.slotNum = insertSlot;
+        recordLength += (nFields + 1) * sizeof(int);
+#ifdef DEBUG
+        printf("[insertRecord] insert offset: %d, insert recordLength: %d, insert slotNum: %d\n", offset, recordLength, insertSlot);
+#endif
+        if (insertSlot < nSlot - 1)
+        {
+            moveRecords(offset + recordLength, page, insertSlot + 1, RIGHT);
+        }
 
-        rid.slotNum = nSlot;
         for (int i = 0; i < nFields; ++i)
         {
+            // printf("[insertRecord: write field %d\n", i);
             memcpy((char *)page + offset + (i + 1) * sizeof(int), &indexList[i], sizeof(int));
         }
         // total += nFields * sizeof(int);
-        recordLength += (nFields + 1) * sizeof(int);
         memcpy((char *)page + offset, &recordLength, sizeof(int));
         memcpy((char *)page + offset + (nFields + 1) * sizeof(int), data, recordLength - (nFields + 1) * sizeof(int));
 
-        total += sizeof(int) + recordLength;
+        total += (nSlot == insertSlot ? sizeof(int) : 0) + recordLength;
         memcpy((char *)page, &total, sizeof(int));
 
         //Slot table
-        int size = nSlot + 1;
+        int size = nSlot == insertSlot ? nSlot + 1 : nSlot;
         memcpy((char *)page + PAGE_SIZE - sizeof(int), &size, sizeof(int));
-        memcpy((char *)page + PAGE_SIZE - (nSlot + 2) * sizeof(int), &offset, sizeof(int));
+        memcpy((char *)page + PAGE_SIZE - (insertSlot + 2) * sizeof(int), &offset, sizeof(int));
         fileHandle.writePage(cPage, page);        
     }
     rid.pageNum = cPage;
@@ -213,7 +278,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
     int offset;
     memcpy(&offset, (char *)page + PAGE_SIZE - (rid.slotNum + 2) * sizeof(int), sizeof(int));
 #ifdef DEBUG
-    printf("pageNum: %d, slotNum: %d, length: %d, offset: %d\n", rid.pageNum, rid.slotNum, recordLength, offset);
+    printf("[insertRecord] pageNum: %d, slotNum: %d, length: %d, offset: %d\n\n", rid.pageNum, rid.slotNum, recordLength, offset);
 #endif
     free(page);
     return 0;    
@@ -224,6 +289,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
     int nFields = recordDescriptor.size();
     int recordLength;
     int slotNum = rid.slotNum;
+    // printf("pageNum: %d, slotNum: %d\n", rid.pageNum, rid.slotNum);
     void *page = malloc(PAGE_SIZE);
     fileHandle.readPage(cPage, page);
 
@@ -233,18 +299,24 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
         return -1;
 
     memcpy(&recordLength, (char *)page + offset, sizeof(int));
-
+    // printf("pageNum: %d, slotNum: %d\n", rid.pageNum, rid.slotNum);
     while (recordLength == -1)
     {
+        
         memcpy(&cPage, (char *)page + offset + sizeof(int), sizeof(int));
         memcpy(&slotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
+#ifdef DEBUG
+        printf("[readRecord] stump points to (%d, %d)\n", cPage, slotNum);
+#endif
         fileHandle.readPage(cPage, page);
         int offset;
         memcpy(&offset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
         memcpy(&recordLength, (char *)page + offset, sizeof(int));
     }
+    // printf("recordlength: %d\n", recordLength);
     memcpy(data, (char *)page + offset + (nFields + 1) * sizeof(int), recordLength - (nFields + 1) * sizeof(int));
     // printf("record length: %d\n", recordLength);
+    // this->printRecord(recordDescriptor, data);
     return 0;
 }
 
@@ -256,7 +328,7 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
 // #ifdef DEBUG
 //     for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
 //     {
-//         printf("%d ", nullFieldsIndicator[i]);
+//         printf("[printRecord] %d ", nullFieldsIndicator[i]);
 //     }
 //     printf("\n");
 // #endif
@@ -425,7 +497,10 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     int offset;
     memcpy(&offset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
     memcpy(&nSlot, (char *)page + PAGE_SIZE - sizeof(int), sizeof(int));
+    if (offset == -1)
+        return -1;
     memcpy(&recordLength, (char *)page + offset, sizeof(int));
+    // printf("recordLength %d\n", recordLength);
 
     // for (int i = slotNum + 1; i < nSlot; ++i)
     // {
@@ -441,12 +516,27 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     //     offset += oldRecordLength;
     //     free(data);
     // }
+    if (recordLength == -1)
+    {
+        RID newRid;
+        memcpy(&newRid.pageNum, (char *)page + offset + sizeof(int), sizeof(int));
+        memcpy(&newRid.slotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
+#ifdef DEBUG
+    printf("[deleteRecord] This is a stump, need to delete recursively. cPage: %d, pageNum: %d, slotNum: %d, offset: %d\n", 
+        cPage, newRid.pageNum, newRid.slotNum, offset);
+#endif
+        this->deleteRecord(fileHandle, recordDescriptor, newRid);
+    }
     this->moveRecords(offset, page, slotNum + 1, LEFT);
 
     int size = -1;
     memcpy((char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), &size, sizeof(int));
-    total -= recordLength;
+    total -= recordLength == -1 ? 3 * sizeof(int) : recordLength;
     memcpy((char *)page, &total, sizeof(int));
+#ifdef DEBUG
+    printf("[deleteRecord] offset: %d, nSlot: %d, pageNum: %d, slotNum: %d, recordLength: %d, total before: %d, total after: %d\n", 
+        offset, nSlot, cPage, slotNum, recordLength, total + (recordLength == -1 ? 3 * sizeof(int) : recordLength), total);
+#endif
     fileHandle.writePage(cPage, page);  
     free(page);
     return 0;
@@ -464,6 +554,9 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     //Get total number of slots
     memcpy(&nSlot, (char *)page + PAGE_SIZE - sizeof(int), sizeof(int));
 
+#ifdef DEBUG
+    printf("[updateRecord] cPage: %d, slotNum: %d, total pages: %d, total slots: %d\n", cPage, slotNum, fileHandle.getNumberOfPages(), nSlot);
+#endif
     int total;
     int *indexList = new int[nFields];
     this->getIndexList(recordDescriptor, data, indexList);
@@ -477,11 +570,14 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     memcpy(&oldRecordLength, (char *)page + offset, sizeof(int));
 
 #ifdef DEBUG
-    printf("updateRecord; record offset: %d, old record length: %d, new record length:%d\n", offset, 
+    printf("[updateRecord] record offset: %d, old record length: %d, new record length:%d\n", offset, 
         oldRecordLength, recordLength + (nFields + 1) * sizeof(int));
 #endif
     if (recordLength + (nFields + 1) * sizeof(int) == oldRecordLength)
     {
+#ifdef DEBUG
+        printf("[updateRecord] New length is equal to old length\n");
+#endif
         for (int i = 0; i < nFields; ++i)
         {
             memcpy((char *)page + offset + (i + 1) * sizeof(int), &indexList[i], sizeof(int));
@@ -490,6 +586,9 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         fileHandle.writePage(cPage, page);   
     } else if (recordLength + (nFields + 1) * sizeof(int) < oldRecordLength)
     {
+#ifdef DEBUG
+        printf("[updateRecord] New length is smaller than old length\n");
+#endif
         for (int i = 0; i < nFields; ++i)
         {
             memcpy((char *)page + offset + (i + 1) * sizeof(int), &indexList[i], sizeof(int));
@@ -509,6 +608,10 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     {
         RID tempRID;
         this->insertRecord(fileHandle, recordDescriptor, data, tempRID);
+#ifdef DEBUG
+        printf("[updateRecord] New record exceeds the maximum of current page.\n New pageNum: %d, new slotNum: %d\n",
+            tempRID.pageNum, tempRID.slotNum);
+#endif
         int size = -1;
         memcpy((char *)page + offset, &size, sizeof(int));
         if (oldRecordLength >= 3 * sizeof(int))
@@ -524,8 +627,19 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         }
         total = total + 3 * sizeof(int) - oldRecordLength;
         memcpy((char *)page, &total, sizeof(int));
+        fileHandle.writePage(cPage, page);   
+
+        int pageNum;
+        int slotNum;
+        fileHandle.readPage(cPage, page);
+        memcpy(&pageNum, (char *)page + offset + sizeof(int), sizeof(int));
+        memcpy(&slotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
+        printf("cPage: %d, offset: %d, (%d, %d)\n", cPage, offset, pageNum, slotNum);
     } else
     {
+#ifdef DEBUG
+        printf("[updateRecord] New record can still be placed within this page.\n");
+#endif
         this->moveRecords(recordLength + (nFields + 1) * sizeof(int) - oldRecordLength, page, slotNum + 1, RIGHT);
         for (int i = 0; i < nFields; ++i)
         {
@@ -622,6 +736,9 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<At
     int nByte = i / 8;
     int nBit = i % 8;
     bool nullBit = nullFieldsIndicator[nByte] & (1 << (7 - nBit));
+    int returnDataOffset = 1;
+    int isNull = nullBit ? 1 : 0;
+    memcpy(data, &isNull, recordDescriptor[i].length);
 
     if(!nullBit)
     {
@@ -633,22 +750,24 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<At
         memcpy(&recordOffset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
         memcpy(&offset, (char *)page + recordOffset + (1 + i) * sizeof(int), sizeof(int));
 #ifdef DEBUG
-        printf("record offset: %d, attribute offset: %d, i: %d\n", recordOffset, offset, i);
+        printf("[readAttribute] record offset: %d, attribute offset: %d, i: %d\n", recordOffset, offset, i);
 #endif
         if (recordDescriptor[i].type == TypeInt)
         {
-            memcpy(data, (char *)content + offset, recordDescriptor[i].length);
+            memcpy((char *)data + returnDataOffset, (char *)content + offset, recordDescriptor[i].length);
         }
         if (recordDescriptor[i].type == TypeReal)
         {
-            memcpy(data, (char *)content + offset, recordDescriptor[i].length);
+            memcpy((char *)data + returnDataOffset, (char *)content + offset, recordDescriptor[i].length);
         }
         if (recordDescriptor[i].type == TypeVarChar)
         {
             int nameLength;
             memcpy(&nameLength, (char *)content + offset, sizeof(int));
             // printf("String length: %d\n", nameLength);
-            memcpy(data, (char *)content + offset, nameLength);
+            memcpy((char *)data + returnDataOffset, &nameLength, sizeof(int));
+            returnDataOffset += sizeof(int);
+            memcpy((char *)data + returnDataOffset, (char *)content + offset + sizeof(int), nameLength);
         }          
         free(page);
     }
@@ -723,7 +842,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
     {
         cSlot++;
 #ifdef DEBUG
-        printf("current page: %d, current slot:%d, total pages: %d, total slots: %d\n", cPage, cSlot, fileHandle->getNumberOfPages(), nSlots);
+        // printf("[getNextRecord] current page: %d, current slot:%d, total pages: %d, total slots: %d\n", cPage, cSlot, fileHandle->getNumberOfPages(), nSlots);
 #endif
         if (cSlot > nSlots - 1)
         {
@@ -774,8 +893,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
             int attrOffset;
             memcpy(&attrOffset, (char *)page + offset + (conditionAttributePosition + 1) * sizeof(int), sizeof(int));
 #ifdef DEBUG
-            printf("offset: %d, dataOffset: %d, attrOffset: %d, conditionAttributePosition: %d\n",
-                offset, dataOffset, attrOffset, conditionAttributePosition);
+            // printf("[getNextRecord] offset: %d, dataOffset: %d, attrOffset: %d, conditionAttributePosition: %d\n",
+                // offset, dataOffset, attrOffset, conditionAttributePosition);
 #endif
             if (recordDescriptor[conditionAttributePosition].type == TypeInt)
             {
@@ -784,7 +903,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
                 int searchValue;
                 memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
 #ifdef DEBUG
-                printf("value: %d, searchValue: %d\n", value, searchValue);
+                // printf("[getNextRecord] value: %d, searchValue: %d\n", value, searchValue);
 #endif
                 
                 switch (compOp)
@@ -851,10 +970,17 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
                 char* value_c = (char *) malloc(nameLength + 1);
                 memcpy(value_c, (char *)page + dataOffset + attrOffset + sizeof(int), nameLength);
                 value_c[nameLength] = '\0';
-                string searchValue = string((char *) this->value);
+
+                int searchValueLength;
+                memcpy(&searchValueLength, (char *)this->value, sizeof(int));
+                char* value_s = (char *) malloc(searchValueLength + 1);
+                memcpy(value_s, (char *) this->value + sizeof(int), searchValueLength);
+                value_s[searchValueLength] = '\0';
+
+                string searchValue = string(value_s);
                 string value = string(value_c);
 #ifdef DEBUG
-                printf("name length: %d, value: %s, searchValue: %s\n", nameLength, value.c_str(), searchValue.c_str());
+                // printf("[getNextRecord] name length: %d, value: %s, searchValue: %s, searchValueLength: %d\n", nameLength, value.c_str(), searchValue.c_str(), searchValueLength);
 #endif
 
                 switch (compOp)
@@ -886,7 +1012,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
             if (satisfied)
             {
 #ifdef DEBUG
-                printf("Satisfied!\n");
+                // printf("[getNextRecord] Satisfied!\n");
 #endif
                 int nFields = attributeNames.size();
                 int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
