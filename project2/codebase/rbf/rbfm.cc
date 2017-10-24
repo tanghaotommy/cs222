@@ -60,6 +60,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
     void *page = malloc(PAGE_SIZE);
     int cPage = fileHandle.getNumberOfPages() - 1;
     fileHandle.readPage(cPage, page);
+    // this->printRecord(recordDescriptor, data);
 
     // //length + data
     // int offset = 0;
@@ -240,6 +241,11 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         {
             memcpy(&offset, (char *)page + PAGE_SIZE - (i + 1) * sizeof(int), sizeof(int));
             memcpy(&lastLength, (char *)page + offset, sizeof(int));
+            if (lastLength == -1)
+            //This is a stump
+            {
+                lastLength = 3 * sizeof(int);
+            }
             insertSlot = i;
         }
         
@@ -306,7 +312,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
         memcpy(&cPage, (char *)page + offset + sizeof(int), sizeof(int));
         memcpy(&slotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
         fileHandle.readPage(cPage, page);
-        int offset;
+        // int offset;
         memcpy(&offset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
         memcpy(&recordLength, (char *)page + offset, sizeof(int));
 #ifdef DEBUG
@@ -315,9 +321,13 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
 #endif
     }
     // printf("recordlength: %d\n", recordLength);
+#ifdef DEBUG
+        printf("[readRecord] read from (%d, %d); recordLength: %d, offset: %d\n", 
+            cPage, slotNum, recordLength, offset);
+#endif
     memcpy(data, (char *)page + offset + (nFields + 1) * sizeof(int), recordLength - (nFields + 1) * sizeof(int));
-    printf("record length: %d\n", recordLength);
-    this->printRecord(recordDescriptor, data);
+    // printf("record length: %d\n", recordLength);
+    // this->printRecord(recordDescriptor, data);
     return 0;
 }
 
@@ -326,13 +336,13 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
     int nFields = recordDescriptor.size();
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
     unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
-#ifdef DEBUG
-    for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
-    {
-        printf("[printRecord] %d ", nullFieldsIndicator[i]);
-    }
-    printf("\n");
-#endif
+// #ifdef DEBUG
+//     for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
+//     {
+//         printf("[printRecord] %d\n", nullFieldsIndicator[i]);
+//     }
+//     printf("\n");
+// #endif
     for (int i = 0; i < nullFieldsIndicatorActualSize; ++i)
     {
         nullFieldsIndicator[i] = ((char *)data)[i];
@@ -528,6 +538,9 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
 #endif
         this->deleteRecord(fileHandle, recordDescriptor, newRid);
     }
+#ifdef DEBUG
+    printf("[deleteRecord] Moving record left, pageNum: %d, offset: %d, from slotNum: %d\n", cPage, offset, slotNum + 1);
+#endif
     this->moveRecords(offset, page, slotNum + 1, LEFT);
 
     int size = -1;
