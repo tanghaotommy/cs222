@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstring>
 #include <cmath>
+#include <algorithm>
 #include "../rbf/rbfm.h"
 
 using namespace std;
