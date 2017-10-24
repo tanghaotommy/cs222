@@ -302,7 +302,12 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
     int offset;
     memcpy(&offset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
     if (offset == -1)
+    {
+#ifdef DEBUG
+        printf("[readRecord] This record (%d, %d) has been deleted\n", cPage, slotNum);
+#endif
         return -1;
+    }
 
     memcpy(&recordLength, (char *)page + offset, sizeof(int));
     // printf("pageNum: %d, slotNum: %d\n", rid.pageNum, rid.slotNum);
@@ -694,6 +699,9 @@ RC RecordBasedFileManager::moveRecords(int offset, void *page, int slotNum, Dire
                 continue;
             int oldRecordLength;
             memcpy(&oldRecordLength, (char *)page +  oldOffset, sizeof(int));
+            if (oldRecordLength == -1)
+            //This is a stump
+                oldRecordLength = 3 * sizeof(int);
             memcpy(data, (char *)page +  oldOffset, oldRecordLength);
 
             memcpy((char *)page + offset, data, oldRecordLength);
@@ -712,6 +720,9 @@ RC RecordBasedFileManager::moveRecords(int offset, void *page, int slotNum, Dire
             if (oldOffset == -1)
                 continue;
             int oldRecordLength;
+            if (oldRecordLength == -1)
+            //This is a stump
+                oldRecordLength = 3 * sizeof(int);
             memcpy(&oldRecordLength, (char *)page +  oldOffset, sizeof(int));
             memcpy(data, (char *)page +  oldOffset, oldRecordLength);
 
