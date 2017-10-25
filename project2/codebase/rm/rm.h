@@ -60,11 +60,13 @@ public:
   RC getTableId(const string &tableName, int &tableId);
   RC prepareCatalogTableDescriptor(vector<Attribute> &attributes);
   RC prepareCatalogColumnDescriptor(vector<Attribute> &attributes);
-  RC prepareTablesRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,const string tablename);
+  RC prepareTablesRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,const string tablename,int isSystemTable);
   RC prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,Attribute attr, int position);
   RC getFileNameByTableName(const string &tableName, string &fileName);
   RC insertColumn(int tableid, const vector<Attribute> &attributes);
-    
+  RC UpdateColumns(int tableid,vector<Attribute> attributes);
+  int isSystemTable(const string &tableName);
+  int generateNextTableId();
   // Scan returns an iterator to allow the caller to go through the results one by one.
   // Do not store entire results in the scan iterator.
   RC scan(const string &tableName,
