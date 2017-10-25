@@ -337,7 +337,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
 }
 
 RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor, const void *data) {
-    printf("Size of data: %d, data: %c\n", sizeof(data), ((char *)data)[0]);
+    // printf("Size of data: %d, data: %c\n", sizeof(data), ((char *)data)[0]);
     int nFields = recordDescriptor.size();
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
     unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
@@ -939,7 +939,13 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
             int nFields = recordDescriptor.size();
             int dataOffset = offset + (nFields + 1) * sizeof(int);
             int attrOffset;
+            bool isNull = false;
             memcpy(&attrOffset, (char *)page + offset + (conditionAttributePosition + 1) * sizeof(int), sizeof(int));
+            if (attrOffset == -1)
+            {
+                satisfied = false;
+                isNull = true;
+            }
 #ifdef DEBUG
             // printf("[getNextRecord] offset: %d, dataOffset: %d, attrOffset: %d, conditionAttributePosition: %d\n",
             //     offset, dataOffset, attrOffset, conditionAttributePosition);
@@ -948,7 +954,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
             {
                 satisfied = true;
             }
-            else
+            else if (!isNull)
             {
                 if (recordDescriptor[conditionAttributePosition].type == TypeInt)
                 {
