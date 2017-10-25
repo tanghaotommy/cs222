@@ -240,6 +240,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
         else
         {
             memcpy(&offset, (char *)page + PAGE_SIZE - (i + 1) * sizeof(int), sizeof(int));
+            offset = abs(offset);
             memcpy(&lastLength, (char *)page + offset, sizeof(int));
             if (lastLength == -1)
             //This is a stump
@@ -282,6 +283,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 
     int offset;
     memcpy(&offset, (char *)page + PAGE_SIZE - (rid.slotNum + 2) * sizeof(int), sizeof(int));
+    offset = abs(offset);
 #ifdef DEBUG
     printf("[insertRecord] pageNum: %d, slotNum: %d, length: %d, offset: %d\n\n", rid.pageNum, rid.slotNum, recordLength, offset);
 #endif
@@ -307,6 +309,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
 #endif
         return -1;
     }
+    offset = abs(offset);
 
     memcpy(&recordLength, (char *)page + offset, sizeof(int));
     // printf("pageNum: %d, slotNum: %d\n", rid.pageNum, rid.slotNum);
@@ -318,6 +321,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
         fileHandle.readPage(cPage, page);
         // int offset;
         memcpy(&offset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
+        offset = abs(offset);
         memcpy(&recordLength, (char *)page + offset, sizeof(int));
 #ifdef DEBUG
         printf("[readRecord] stump points to (%d, %d); recordLength: %d, offset: %d\n", 
@@ -516,6 +520,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const vector<Att
     memcpy(&nSlot, (char *)page + PAGE_SIZE - sizeof(int), sizeof(int));
     if (offset == -1)
         return -1;
+    offset = abs(offset);
     memcpy(&recordLength, (char *)page + offset, sizeof(int));
     // printf("recordLength %d\n", recordLength);
 
@@ -587,6 +592,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     int oldRecordLength;
     int offset;
     memcpy(&offset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
+    offset = abs(offset);
     memcpy(&oldRecordLength, (char *)page + offset, sizeof(int));
 
 #ifdef DEBUG
@@ -634,6 +640,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
 #endif
         int size = -1;
         memcpy((char *)page + offset, &size, sizeof(int));
+        printf("offset: %d\n", offset);
         if (oldRecordLength >= 3 * sizeof(int))
         {
             memcpy((char *)page + offset + sizeof(int), &tempRID.pageNum, sizeof(int));
@@ -649,12 +656,16 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         memcpy((char *)page, &total, sizeof(int));
         fileHandle.writePage(cPage, page);   
 
-        int pageNum;
-        int slotNum;
-        fileHandle.readPage(cPage, page);
-        memcpy(&pageNum, (char *)page + offset + sizeof(int), sizeof(int));
-        memcpy(&slotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
-        //printf("cPage: %d, offset: %d, (%d, %d)\n", cPage, offset, pageNum, slotNum);
+        //Mark this as a record which is pointed to by a stump
+        int tempOffset;
+        fileHandle.readPage(tempRID.pageNum, page);
+        // printf("(%d, %d)\n", tempRID.pageNum, tempRID.slotNum);
+        memcpy(&tempOffset, (char *)page + PAGE_SIZE - (tempRID.slotNum + 2) * sizeof(int), sizeof(int));
+        // printf("tempOffset: %d\n", tempOffset);
+        tempOffset = -tempOffset;
+        memcpy((char *)page + PAGE_SIZE - (tempRID.slotNum + 2) * sizeof(int), &tempOffset, sizeof(int));
+        fileHandle.writePage(tempRID.pageNum, page);
+        // printf("cPage: %d, offset: %d, (%d, %d)\n", cPage, offset, pageNum, slotNum);
     } else
     {
 #ifdef DEBUG
@@ -698,6 +709,8 @@ RC RecordBasedFileManager::moveRecords(int offset, void *page, int slotNum, Dire
             memcpy(&oldOffset, (char *)page + PAGE_SIZE - (i + 2) * sizeof(int), sizeof(int));
             if (oldOffset == -1)
                 continue;
+            int sign = oldOffset > 0 ? 1 : -1;
+            oldOffset = abs(oldOffset);
             int oldRecordLength;
             memcpy(&oldRecordLength, (char *)page +  oldOffset, sizeof(int));
             if (oldRecordLength == -1)
@@ -706,7 +719,9 @@ RC RecordBasedFileManager::moveRecords(int offset, void *page, int slotNum, Dire
             memcpy(data, (char *)page +  oldOffset, oldRecordLength);
 
             memcpy((char *)page + offset, data, oldRecordLength);
+            offset *= sign;
             memcpy((char *)page + PAGE_SIZE - (i + 2) * sizeof(int), &offset, sizeof(int));
+            offset = abs(offset);
             offset += oldRecordLength;
             free(data);
         }
@@ -720,6 +735,8 @@ RC RecordBasedFileManager::moveRecords(int offset, void *page, int slotNum, Dire
             memcpy(&oldOffset, (char *)page + PAGE_SIZE - (i + 2) * sizeof(int), sizeof(int));
             if (oldOffset == -1)
                 continue;
+            int sign = oldOffset > 0 ? 1 : -1;
+            oldOffset = abs(oldOffset);
             int oldRecordLength;
             memcpy(&oldRecordLength, (char *)page +  oldOffset, sizeof(int));
             if (oldRecordLength == -1)
@@ -734,6 +751,7 @@ RC RecordBasedFileManager::moveRecords(int offset, void *page, int slotNum, Dire
 #endif
             // offset = oldOffset + shift;
             memcpy((char *)page + newOffset, data, oldRecordLength);
+            newOffset *= sign;
             memcpy((char *)page + PAGE_SIZE - (i + 2) * sizeof(int), &newOffset, sizeof(int));
             free(data);   
         }
@@ -782,6 +800,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const vector<At
         int recordOffset;
         memcpy(&recordOffset, (char *)page + PAGE_SIZE - (slotNum + 2) * sizeof(int), sizeof(int));
         memcpy(&offset, (char *)page + recordOffset + (1 + i) * sizeof(int), sizeof(int));
+        offset = abs(offset);
 #ifdef DEBUG
         printf("[readAttribute] record offset: %d, attribute offset: %d, i: %d\n", recordOffset, offset, i);
 #endif
@@ -915,7 +934,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
         bool satisfied = false;
         memcpy(&offset, (char *)page + PAGE_SIZE - (cSlot + 2) * sizeof(int), sizeof(int));
 
-        if (offset == -1)
+        if (offset < 0)
             valid = false;
         rid.slotNum = cSlot;
         rid.pageNum = cPage;
@@ -924,6 +943,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
         {
             int offset;
             memcpy(&offset, (char *)page + PAGE_SIZE - (cSlot + 2) * sizeof(int), sizeof(int));
+            offset = abs(offset);
 
             //Has been deleted
             if (offset == -1)
@@ -940,6 +960,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
                 memcpy(&tSlot, (char *)page + offset + 2 * sizeof(int), sizeof(int));
                 fileHandle->readPage(tPage, page);
                 memcpy(&offset, (char *)page + PAGE_SIZE - (tSlot + 2) * sizeof(int), sizeof(int));
+                offset = abs(offset);
                 memcpy(&recordLength, (char *)page + offset, sizeof(int));
             }
             int nFields = recordDescriptor.size();
@@ -953,8 +974,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
                 isNull = true;
             }
 #ifdef DEBUG
-            // printf("[getNextRecord] offset: %d, dataOffset: %d, attrOffset: %d, conditionAttributePosition: %d\n",
-            //     offset, dataOffset, attrOffset, conditionAttributePosition);
+            printf("[getNextRecord] offset: %d, dataOffset: %d, attrOffset: %d, conditionAttributePosition: %d\n",
+                offset, dataOffset, attrOffset, conditionAttributePosition);
 #endif
             if (compOp == NO_OP)
             {
@@ -969,7 +990,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
                     int searchValue;
                     memcpy(&searchValue, this->value, recordDescriptor[conditionAttributePosition].length);
 #ifdef DEBUG
-                    // printf("[getNextRecord] value: %d, searchValue: %d\n", value, searchValue);
+                    printf("[getNextRecord] value: %d, searchValue: %d\n", value, searchValue);
 #endif
                     
                     switch (compOp)
@@ -1046,7 +1067,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
                     string searchValue = string(value_s);
                     string value = string(value_c);
 #ifdef DEBUG
-                    // printf("[getNextRecord] name length: %d, value: %s, searchValue: %s, searchValueLength: %d\n", nameLength, value.c_str(), searchValue.c_str(), searchValueLength);
+                    printf("[getNextRecord] name length: %d, value: %s, searchValue: %s, searchValueLength: %d\n", nameLength, value.c_str(), searchValue.c_str(), searchValueLength);
 #endif
 
                     switch (compOp)
@@ -1079,7 +1100,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
             if (satisfied)
             {
 #ifdef DEBUG
-                // printf("[getNextRecord] Satisfied!\n");
+                printf("[getNextRecord] Satisfied!\n");
 #endif
                 int nFields = attributeNames.size();
                 int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);

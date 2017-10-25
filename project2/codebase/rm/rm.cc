@@ -168,7 +168,6 @@ RC RelationManager::deleteTable(const string &tableName)
 	if(rbfm_ScanIterator.getNextRecord(rid, data) != RBFM_EOF)
 	{
 		// rbfm->printRecord(recordDescriptor, data);
-		//printf("slotNum: %d, pageNum: %d\n", rid.slotNum, rid.pageNum);
 		rbfm->deleteRecord(fileHandle, recordDescriptor, rid);
 	}
 	else
