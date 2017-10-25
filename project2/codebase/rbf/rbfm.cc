@@ -257,9 +257,8 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const vector<Att
 #endif
         if (insertSlot < nSlot - 1)
         {
-            moveRecords(offset + recordLength, page, insertSlot + 1, RIGHT);
+            moveRecords(recordLength, page, insertSlot + 1, RIGHT);
         }
-
         for (int i = 0; i < nFields; ++i)
         {
             // printf("[insertRecord: write field %d\n", i);
@@ -668,7 +667,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         memcpy((char *)page + offset, &recordLength, sizeof(int));
         memcpy((char *)page + offset + (nFields + 1) * sizeof(int), data, recordLength - (nFields + 1) * sizeof(int));
 
-        printf("[updateRecord] new: %d, old: %d, extra: %d\n", 
+        // printf("[updateRecord] new: %d, old: %d, extra: %d\n", 
             recordLength,  oldRecordLength, (recordLength - oldRecordLength));
         total = total + (recordLength - oldRecordLength);
         memcpy((char *)page, &total, sizeof(int));
@@ -720,15 +719,20 @@ RC RecordBasedFileManager::moveRecords(int offset, void *page, int slotNum, Dire
             if (oldOffset == -1)
                 continue;
             int oldRecordLength;
+            memcpy(&oldRecordLength, (char *)page +  oldOffset, sizeof(int));
             if (oldRecordLength == -1)
             //This is a stump
                 oldRecordLength = 3 * sizeof(int);
             memcpy(&oldRecordLength, (char *)page +  oldOffset, sizeof(int));
             memcpy(data, (char *)page +  oldOffset, oldRecordLength);
 
-            offset = oldOffset + shift;
-            memcpy((char *)page + offset, data, oldRecordLength);
-            memcpy((char *)page + PAGE_SIZE - (i + 2) * sizeof(int), &offset, sizeof(int));
+            int newOffset = oldOffset + shift;
+#ifdef DEBUG
+            printf("[moveRecords] %d, oldOffset: %d, new offset: %d\n", i, oldOffset, newOffset);
+#endif
+            // offset = oldOffset + shift;
+            memcpy((char *)page + newOffset, data, oldRecordLength);
+            memcpy((char *)page + PAGE_SIZE - (i + 2) * sizeof(int), &newOffset, sizeof(int));
             free(data);   
         }
     }
