@@ -668,7 +668,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         memcpy((char *)page + offset + (nFields + 1) * sizeof(int), data, recordLength - (nFields + 1) * sizeof(int));
 
         // printf("[updateRecord] new: %d, old: %d, extra: %d\n", 
-            recordLength,  oldRecordLength, (recordLength - oldRecordLength));
+        //     recordLength,  oldRecordLength, (recordLength - oldRecordLength));
         total = total + (recordLength - oldRecordLength);
         memcpy((char *)page, &total, sizeof(int));
 
