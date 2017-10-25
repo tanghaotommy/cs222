@@ -67,6 +67,9 @@ RC TEST_RM_13(const string &tableName)
     free(returnedData);
     free(nullsIndicator);
 
+    
+
+
     cout << "***** Test Case 13 Finished. The result will be examined. *****" << endl << endl;
     
     return success;
@@ -74,7 +77,8 @@ RC TEST_RM_13(const string &tableName)
 
 int main()
 {
-	// Scan with conditions
+    // Scan with conditions
+    rm->deleteTable("tbl_b_employee4");
     RC rcmain = createTable("tbl_b_employee4");
     rcmain = TEST_RM_13("tbl_b_employee4");
 

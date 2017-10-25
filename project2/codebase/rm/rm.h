@@ -61,7 +61,7 @@ public:
   RC prepareCatalogTableDescriptor(vector<Attribute> &attributes);
   RC prepareCatalogColumnDescriptor(vector<Attribute> &attributes);
   RC prepareTablesRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,const string tablename,int isSystemTable);
-  RC prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,Attribute attr, int position);
+  RC prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,Attribute attr, int position,int isDeleted);
   RC getFileNameByTableName(const string &tableName, string &fileName);
   RC insertColumn(int tableid, const vector<Attribute> &attributes);
   RC UpdateColumns(int tableid,vector<Attribute> attributes);

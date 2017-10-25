@@ -109,7 +109,6 @@ RC TEST_RM_13b(const string &tableName)
 	free(nullsIndicator);
 	free(nullsIndicatorWithNull);
 
-	rc = rm->deleteTable("tbl_b_employee5");
 	
     cout << "Test Case 13B Finished. The result will be examined. *****" << endl << endl;
     
@@ -118,9 +117,10 @@ RC TEST_RM_13b(const string &tableName)
 
 int main()
 {
+	rm->deleteTable("tbl_b_employee52");
 	// Scan with conditions
-    RC rcmain = createTable("tbl_b_employee5");
-    rcmain = TEST_RM_13b("tbl_b_employee5");
-
+    RC rcmain = createTable("tbl_b_employee52");
+    rcmain = TEST_RM_13b("tbl_b_employee52");
+	
     return rcmain;
 }

@@ -1,0 +1,23 @@
+{
+    "files.associations": {
+        "vector": "cpp",
+        "xstring": "cpp",
+        "xutility": "cpp",
+        "iosfwd": "cpp",
+        "system_error": "cpp",
+        "type_traits": "cpp",
+        "xstddef": "cpp",
+        "xtr1common": "cpp",
+        "xlocale": "cpp",
+        "xlocnum": "cpp",
+        "fstream": "cpp",
+        "deque": "cpp",
+        "cmath": "cpp",
+        "initializer_list": "cpp",
+        "queue": "cpp",
+        "xtree": "cpp",
+        "tuple": "cpp",
+        "utility": "cpp",
+        "xmemory0": "cpp"
+    }
+}
