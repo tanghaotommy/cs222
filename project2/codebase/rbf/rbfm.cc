@@ -595,6 +595,28 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
     offset = abs(offset);
     memcpy(&oldRecordLength, (char *)page + offset, sizeof(int));
 
+    if (recordLength == -1)
+    {
+        int nPage;
+        int nSlotNum;
+        memcpy(&nPage, (char *)page + offset + sizeof(int), sizeof(int));
+        memcpy(&nSlotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
+        fileHandle.readPage(nPage, page);
+        oldRecordLength = 3 * sizeof(int);
+        RID nRid;
+        nRid.pageNum = nPage;
+        nRid.slotNum = nSlotNum;
+        this->deleteRecord(fileHandle, recordDescriptor, nRid);
+        // int offset;
+        // memcpy(&offset, (char *)page + PAGE_SIZE - (nSlotNum + 2) * sizeof(int), sizeof(int));
+        // offset = abs(offset);
+        // memcpy(&recordLength, (char *)page + offset, sizeof(int));
+#ifdef DEBUG
+        printf("[updateRecord] stump points to (%d, %d)\n", 
+            nPage, nSlotNum);
+#endif
+    }
+
 #ifdef DEBUG
     printf("[updateRecord] record offset: %d, old record length: %d, new record length:%d, total: %d, left: %d\n", 
         offset, oldRecordLength, recordLength + (nFields + 1) * sizeof(int), total, left);
