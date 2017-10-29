@@ -394,6 +394,7 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> &recordDescriptor
         }
     }
     printf("\n");
+    free(nullFieldsIndicator);
     return 0;
 }
 
