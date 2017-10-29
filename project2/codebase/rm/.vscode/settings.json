@@ -18,6 +18,7 @@
         "xtree": "cpp",
         "tuple": "cpp",
         "utility": "cpp",
-        "xmemory0": "cpp"
+        "xmemory0": "cpp",
+        "ostream": "cpp"
     }
 }

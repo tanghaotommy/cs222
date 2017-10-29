@@ -1,25 +1,31 @@
 1. Basic information
-Team number (e.g., 01) : 
+Team number (e.g., 01) : 17 
 #1 Student ID : 
-#1 Student Name : 
-#2 Student ID : 
-#2 Student Name : 
+#1 Student Name : Hao Tang
+#2 Student ID : 48286965
+#2 Student Name : Le Yu
 OS (bit) :
-gcc version :
+gcc version : gcc version 5.4.0 20160609
 
 
 2. Meta-data
-- Show your meta-data design (Tables and Columns table) and information about each column.
+Tables (table-id:int, table-name:varchar(50), file-name:varchar(50), system-table:int) 
+system-table is to mark whether this table is a system table.1: system table. 0: User table
+
+Columns(table-id:int, column-name:varchar(50), column-type:int, column-length:int, column-position:int, isDeleted:int)
+isDeleted is a flag to mark whether this attribute is deleted. 1: has been deleted, 0:still exist
 
 
 3. Internal Record Format
 - Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that your team hasn't implemented this feature.
+format: offset directory + record data. Each attribute in the data has its own offset which is stored in the offset directory. 
 - Describe how you store a VarChar field.
 - Describe how you deal with an update and delete.
 
 
 4. Page Format
 - Show your page format design.
+
 - Describe how you deal with an update and delete.
 
 

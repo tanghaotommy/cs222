@@ -67,6 +67,9 @@ public:
   RC UpdateColumns(int tableid,vector<Attribute> attributes);
   int isSystemTable(const string &tableName);
   int generateNextTableId();
+  RC getAllAttributes(const string &tableName, vector<Attribute> &attrs);
+  RC removeNonExisted(const string &tableName, void* data);
+  int getSizeOfdata(vector<Attribute> &attr, void* data);
   // Scan returns an iterator to allow the caller to go through the results one by one.
   // Do not store entire results in the scan iterator.
   RC scan(const string &tableName,

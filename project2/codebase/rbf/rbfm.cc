@@ -332,6 +332,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const vector<Attri
     memcpy(data, (char *)page + offset + (nFields + 1) * sizeof(int), recordLength - (nFields + 1) * sizeof(int));
     // printf("record length: %d\n", recordLength);
     // this->printRecord(recordDescriptor, data);
+    free(page);
     return 0;
 }
 
@@ -652,7 +653,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
         fileHandle.readPage(cPage, page);
         memcpy(&pageNum, (char *)page + offset + sizeof(int), sizeof(int));
         memcpy(&slotNum, (char *)page + offset + 2 * sizeof(int), sizeof(int));
-        printf("cPage: %d, offset: %d, (%d, %d)\n", cPage, offset, pageNum, slotNum);
+        //printf("cPage: %d, offset: %d, (%d, %d)\n", cPage, offset, pageNum, slotNum);
     } else
     {
 #ifdef DEBUG
