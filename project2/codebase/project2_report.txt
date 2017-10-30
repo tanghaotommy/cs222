@@ -1,10 +1,10 @@
 1. Basic information
 Team number (e.g., 01) : 17 
-#1 Student ID : 
+#1 Student ID : 42962450 
 #1 Student Name : Hao Tang
 #2 Student ID : 48286965
 #2 Student Name : Le Yu
-OS (bit) :
+OS (bit) : Linux
 gcc version : gcc version 5.4.0 20160609
 
 
@@ -22,17 +22,26 @@ format: offset directory + record data. Each attribute in the data has its own o
 - Describe how you store a VarChar field.
 - Describe how you deal with an update and delete.
 
+Before storing the real data, I add another field which consists of the number of fields integers indicating the offset of the field into this record. If a field is null then the offset would just be -1. The following graph shows the format of internal record. 
+offset_field1(int)|offset_field2(int)|...|offset_fieldn(int)|length_of_data|data
+
+For storing the VarChar field, I first store the length of the value(int), followed by the value.
+
+For updating, first check whether it is a stump. If it is a stump then, delete the record where the stump points to (ensure only one pointer) and then follow the same rull as the other situation, where first check whether there is enough space within this page. If there is, then just update the field and move corresponding record to left or right. If not, just call the insertRecord() function and store the corresponding new slotNum and pageNum.
+
+For deleting, first check whether this slot has been deleted by checking whether the number stored in the slot table is -1. Then, according to the offset, find the first integer in the record to see whether this is a stump. If it is a stump then delete the stump and then call the delete function to delete the record where the stump points to; if it is not, then just delete the record and change the number in the slot table to -1.
 
 4. Page Format
 - Show your page format design.
 
 - Describe how you deal with an update and delete.
-
+The page format consists of one integer storing the space already been used within this page, followed by all the records stored in the page. The following graph shows the format of page, the "record" represents an abbreviation of record format demonstrated in 2. And at the end of the table, stores the slot table where the offset of each record is stored.
+total|record1|record2|record3|...|recordn ... offsetn|offsetn-1|...|offset0|total number of slots
 
 5. File Format
 - Show your file format design
-
-
+The first page stores the information regarding to three counters, which is hidden to users.
+The real page for storing the record starts from the second page, however, it appears as the first page.
 
 6. Implementation Detail
 - Other implementation details goes here.
