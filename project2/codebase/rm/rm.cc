@@ -38,7 +38,7 @@ RC RelationManager::createCatalog()
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
 	unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
 	memcpy(&nullFieldsIndicator,(char *)data,nullFieldsIndicatorActualSize);
-	rbfm->printRecord(tablesdescriptor,data);	
+	//rbfm->printRecord(tablesdescriptor,data);	
 	RC rc = rbfm->insertRecord(table_filehandle,tablesdescriptor,data,rid);
 	if(rc != 0) return -1;
 	free(data);
@@ -49,7 +49,7 @@ RC RelationManager::createCatalog()
 	nFields = tablesdescriptor.size();
     nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
 	memcpy(&nullFieldsIndicator,(char *)data2,nullFieldsIndicatorActualSize);
-	rbfm->printRecord(tablesdescriptor, data2);
+	//rbfm->printRecord(tablesdescriptor, data2);
 	rc = rbfm->insertRecord(table_filehandle, tablesdescriptor,data2,rid);
 
 	if(rc != 0) return -1;
@@ -96,7 +96,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	RID rid;
 	prepareCatalogTableDescriptor(tablesdescriptor);
 	prepareTablesRecord(tablesdescriptor, data,tableId,tableName,0);
-	rbfm->printRecord(tablesdescriptor,data);
+	//rbfm->printRecord(tablesdescriptor,data);
 	RC rc = rbfm->insertRecord(filehandle,tablesdescriptor,data,rid);
 	free(data);
 	if(rc != 0) return -1;
@@ -159,8 +159,7 @@ RC RelationManager::deleteTable(const string &tableName)
 	else return -1;
 	rbfm_ScanIterator.close();
 
-	if(rbfm->destroyFile(fileName) != 0)
-		return -1;
+	rbfm->destroyFile(fileName);
 
 	conditionAttribute = "table-id";
 	realloc(value, sizeof(int));
@@ -169,7 +168,7 @@ RC RelationManager::deleteTable(const string &tableName)
 	if(rbfm_ScanIterator.getNextRecord(rid, data) != RBFM_EOF)
 	{
 		// rbfm->printRecord(recordDescriptor, data);
-		printf("slotNum: %d, pageNum: %d\n", rid.slotNum, rid.pageNum);
+		//printf("slotNum: %d, pageNum: %d\n", rid.slotNum, rid.pageNum);
 		rbfm->deleteRecord(fileHandle, recordDescriptor, rid);
 	}
 	else
@@ -194,6 +193,8 @@ RC RelationManager::deleteTable(const string &tableName)
 	attributeNames.push_back(attributeName);
 	attributeName = "column-position";
 	attributeNames.push_back(attributeName);
+	attributeName = "delete-flag";
+	attributeNames.push_back(attributeName);
 
 	rbfm->scan(fileHandle, recordDescriptor, conditionAttribute, compOp, value, attributeNames, rbfm_ScanIterator);
 	while(rbfm_ScanIterator.getNextRecord(rid, data) != RBFM_EOF)
@@ -201,9 +202,10 @@ RC RelationManager::deleteTable(const string &tableName)
 		// rbfm->printRecord(recordDescriptor, data);
 		rbfm->deleteRecord(fileHandle, recordDescriptor, rid);
 	}
-	//TODO
 	rbfm_ScanIterator.close();
 	rbfm->closeFile(fileHandle);
+	free(data);
+	free(value);
 	return 0;
 }
 
@@ -213,7 +215,7 @@ bool sortByPosition(const pair<int, Attribute> &a,
     return (a.first < b.first);
 }
 
-RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
+RC RelationManager::getAllAttributes(const string &tableName, vector<Attribute> &attrs)
 {
 	int tableId;
 	if(this->getTableId(tableName, tableId) != 0)
@@ -232,6 +234,8 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 	attributeNames.push_back("column-type");
 	attributeNames.push_back("column-length");
 	attributeNames.push_back("column-position");
+	attributeNames.push_back("delete-flag");
+	
 	CompOp compOp = EQ_OP;
 	RM_ScanIterator rm_ScanIterator;
 
@@ -266,13 +270,20 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 		offset += sizeof(int);
 		int columnPosition;
 		memcpy(&columnPosition, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		int isDeleted;
+		memcpy(&isDeleted, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		
 #ifdef DEBUG
 		printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d, type: %d, column-length:%d, column-position: %d\n", 
 			nameLength, fileName.c_str(), fileName_c, tableId, columnType, columnLength, columnPosition);
 #endif
+
 		attr.name = fileName;
 		attr.type = columnType;
 		attr.length = columnLength;
+		//if(isDeleted != 0) attr.length = 0;
 		vect.push_back(make_pair(columnPosition, attr));
 		// attrs.push_back(attr);
 	}
@@ -286,6 +297,87 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 	}
 	// printf("%s\n", attrs[3].name.c_str());
 	// else return -1;
+	free(data);
+	free(value);
+	return 0;
+}
+
+RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
+{
+	int tableId;
+	if(this->getTableId(tableName, tableId) != 0)
+		return -1;
+
+	vector<Attribute> recordDescriptor;
+	prepareCatalogColumnDescriptor(recordDescriptor);
+	string conditionAttribute = "table-id";
+	void *value = malloc(sizeof(int));
+	memcpy(value, &tableId, sizeof(int));
+	vector<string> attributeNames;
+	
+	attributeNames.push_back("table-id");
+	attributeNames.push_back("column-name");
+	attributeNames.push_back("column-type");
+	attributeNames.push_back("column-length");
+	attributeNames.push_back("column-position");
+	attributeNames.push_back("delete-flag");
+	
+	CompOp compOp = EQ_OP;
+	RM_ScanIterator rm_ScanIterator;
+
+	this->scan("Columns", conditionAttribute, compOp, value, attributeNames, rm_ScanIterator);
+
+	RID rid;
+	void *data = malloc(PAGE_SIZE);
+	string fileName;
+
+	vector<Attribute> attributes;
+	vector< pair <int, Attribute> > vect;
+	while(rm_ScanIterator.getNextTuple(rid, data) != RM_EOF)
+	{
+		Attribute attr;
+		int offset = ceil((double) attributeNames.size() / CHAR_BIT);
+		// rbfm->printRecord(recordDescriptor, data);
+		memcpy(&tableId, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		int nameLength;
+		memcpy(&nameLength, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		char *fileName_c = (char*) malloc(nameLength + 1);
+		memcpy(fileName_c, (char *)data + offset, nameLength);
+		fileName_c[nameLength] = '\0';
+		fileName = string(fileName_c);
+		offset += nameLength;
+		AttrType columnType;
+		memcpy(&columnType, (char *)data + offset, sizeof(AttrType));
+		offset += sizeof(AttrType);
+		int columnLength;
+		memcpy(&columnLength, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		int columnPosition;
+		memcpy(&columnPosition, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		int isDeleted;
+		memcpy(&isDeleted, (char *)data + offset, sizeof(int));
+		offset += sizeof(int);
+		
+		attr.name = fileName;
+		attr.type = columnType;
+		attr.length = columnLength;
+		if(isDeleted == 0) vect.push_back(make_pair(columnPosition, attr));;
+		
+		// attrs.push_back(attr);
+	}
+	rm_ScanIterator.close();
+
+	sort(vect.begin(), vect.end(), sortByPosition);
+	
+	for (int i = 0; i < vect.size(); ++i)
+	{
+		attrs.push_back(vect[i].second);
+	}
+	free(value);
+	free(data);
 	return 0;
 }
 
@@ -363,19 +455,134 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
         return -1;
     }
     vector<Attribute> attr;
-    if(getAttributes(tableName, attr) != 0)
+    if(getAllAttributes(tableName, attr) != 0)
     {
         return -1;
     }
     if(rbfm->readRecord(fileHandle, attr, rid, data) != 0)
     {
         return -1;
-    }
+	}
+	/*
+	cout<<"read tuple:"<<endl;
+	rbfm->printRecord(attr,data);
+	*/
+	vector<Attribute> attr_all;
+	getAttributes(tableName, attr_all);
+	if(attr_all.size() != attr.size()){
+		removeNonExisted(tableName, data);		
+	}
+
     if(rbfm->closeFile(fileHandle) != 0)
     {
         return -1;
     }
     return 0;
+}
+
+RC RelationManager::removeNonExisted(const string &tableName, void* data)
+{
+	int tableId;
+	getTableId(tableName,tableId);
+    vector<Attribute> attr;
+    getAllAttributes(tableName, attr);
+	int leng = 0, reducedLeng = 0;
+	leng = getSizeOfdata(attr, data);
+	
+	RM_ScanIterator rm_scanIterator;
+	vector<string> attrname;
+	attrname.push_back("table-id");
+	attrname.push_back("column-name");
+	attrname.push_back("column-type");
+	attrname.push_back("column-length");
+	attrname.push_back("column-position");
+	attrname.push_back("delete-flag");
+	CompOp compOp = EQ_OP;
+	
+    scan("Columns", "table-id", compOp, &tableId, attrname, rm_scanIterator);
+	RID rid;
+	void *returnedData=malloc(PAGE_SIZE);
+
+    int totalOffset = ceil((double) attr.size() / CHAR_BIT);
+    while(rm_scanIterator.getNextTuple(rid, returnedData) != RM_EOF)
+    {
+        int columnId, isDeleted;
+        AttrType columnType;
+		AttrLength columnLength;
+		int nFields = attrname.size();
+		int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
+		int offset = nullFieldsIndicatorActualSize;
+		offset+=sizeof(int);
+				
+		int columnNameLength;		
+        memcpy(&columnNameLength, (char *)returnedData + offset, sizeof(int));
+        offset += sizeof(int);
+		char *columnName_c = (char*) malloc(columnNameLength + 1);
+		memcpy(columnName_c, (char *)returnedData + offset, columnNameLength);
+		offset += columnNameLength;		
+		columnName_c[columnNameLength] = '\0';
+		string columnName = string(columnName_c);
+		memcpy(&columnType, (char *)returnedData + offset, sizeof(int));
+        offset += 3 * sizeof(int);
+        memcpy(&isDeleted, (char *)returnedData + offset, sizeof(int));
+		offset += sizeof(int);
+		
+        if(isDeleted != 1)
+        {
+            if(columnType == TypeVarChar)
+            {
+                int stringLen = 0;
+                memcpy(&stringLen, (char*)data + totalOffset, sizeof(int));
+                int stringTotalLength = stringLen + sizeof(int);
+                totalOffset += stringTotalLength;
+            } else
+            {
+                totalOffset += sizeof(int);
+            }
+		} else
+        {
+            if(columnType == TypeVarChar)
+            {
+				int stringLen = 0;
+                memcpy(&stringLen, (char*)data + totalOffset, sizeof(int));
+                int stringTotalLength = stringLen + sizeof(int);
+                memcpy((char*)data + totalOffset, (char*)data + totalOffset + stringTotalLength, leng - reducedLeng - totalOffset - stringTotalLength);
+                reducedLeng += stringTotalLength;
+				memset((char*)data + leng - reducedLeng, 0, stringTotalLength);
+                totalOffset += stringTotalLength;
+            } else
+            {
+                memcpy((char*)data + totalOffset, (char*)data + totalOffset + sizeof(int), leng  - reducedLeng - totalOffset - sizeof(int));
+                reducedLeng += sizeof(int);
+                memset((char*)data + leng - reducedLeng, 0, sizeof(int));
+                totalOffset += sizeof(int);
+            }
+		}
+		
+	}
+	free(returnedData);
+    return 0;
+}
+
+int RelationManager::getSizeOfdata(vector<Attribute> &attr, void* data)
+{
+	int nFields = attr.size();
+    int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
+    int offset = nullFieldsIndicatorActualSize;
+    for(int i = 0; i < (int)attr.size(); i++)
+    {
+        if(attr[i].type == TypeVarChar)
+        {
+            int stringLen = 0;
+            memcpy(&stringLen, (char*)data + offset, sizeof(int));
+            offset += stringLen;
+            offset += sizeof(int);
+        } else
+        {
+            offset += sizeof(int);
+        }
+    }
+    return offset;
 }
 
 RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
@@ -441,27 +648,97 @@ RC RelationManager::scan(const string &tableName,
 // Extra credit work
 RC RelationManager::dropAttribute(const string &tableName, const string &attributeName)
 {
-    return -1;
+	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();
+	FileHandle filehandle;
+	vector<Attribute> descriptor;
+	RM_ScanIterator rm_ScanIterator;
+	int tableId;
+	if(this->getTableId(tableName, tableId) != 0)
+		return -1;
+	vector<string> attrname;
+	attrname.push_back("table-id");
+	attrname.push_back("column-name");
+	attrname.push_back("column-type");
+	attrname.push_back("column-length");
+	attrname.push_back("column-position");
+	attrname.push_back("delete-flag");
+
+	this->scan("Columns", "table-id", EQ_OP, &tableId,attrname,rm_ScanIterator);
+	vector<Attribute> columnDescriptor;
+	prepareCatalogColumnDescriptor(columnDescriptor);
+	
+	RID rid;	
+	char *data=(char *)malloc(PAGE_SIZE);	
+	while(rm_ScanIterator.getNextTuple(rid, data) != RM_EOF)
+	{
+		
+		//int nFields = columnDescriptor.size();
+		//int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
+		int offset = 1;
+		int columnNameLength;
+		offset += sizeof(int);
+		
+		memcpy(&columnNameLength, (char*)data + offset, sizeof(int));	
+		offset += sizeof(int);
+		char *columnName_c = (char*) malloc(columnNameLength + 1);
+		memcpy(columnName_c, (char *)data + offset, columnNameLength);
+		offset += columnNameLength;	
+		
+		columnName_c[columnNameLength] = '\0';
+		string columnName = string(columnName_c);
+		
+		if(columnName.compare(attributeName) == 0){
+			
+			int isDeleted = 1;
+			offset = 1 + 2 * sizeof(int) + columnNameLength + 3 * sizeof(int);
+			memcpy((char *)data + offset,&isDeleted,sizeof(int));   
+			rbfm->openFile("Columns",filehandle);
+			vector<Attribute> cAttr;			
+			//rbfm->printRecord(columnDescriptor,data);
+			rbfm->updateRecord(filehandle,columnDescriptor,data,rid);
+
+		}
+		free(columnName_c);
+	}
+	free(data);
+	rbfm->closeFile(filehandle);
+	rm_ScanIterator.close();
+	
+	return 0;
 }
+
+
 
 // Extra credit work
 RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 {
-	/*
-	int tableId = getTableId(tableName);
+	
+	int tableId;
+	if(this->getTableId(tableName, tableId) != 0)
+		return -1;
 	vector<Attribute> descriptor;	
 	getAttributes(tableName,descriptor);
-	if(UpdateColumns(tableid,attr) != 0){
+
+	int position = descriptor.size() + 1;
+	
+	void *data=malloc(PAGE_SIZE);
+	FileHandle table_filehandle;
+	RID rid;
+	
+	vector<Attribute> columndescriptor;
+	prepareCatalogColumnDescriptor(columndescriptor);
+	if(rbfm->openFile("Columns", table_filehandle) != 0){
 		return -1;
 	}
-*/
+	prepareColumnsRecord(columndescriptor,data,tableId,attr,position,0);
+	rbfm->insertRecord(table_filehandle,columndescriptor,data,rid);
+	rbfm->closeFile(table_filehandle);
+
+	free(data);
+
 	return 0;
 }
-/*
-RC RelationManager::UpdateColumns(int tableid,const Attribute attributes){
 
-}
-*/
 RC RelationManager::getFileNameByTableName(const string &tableName, string &fileName)
 {
 	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
@@ -509,8 +786,13 @@ RC RelationManager::getFileNameByTableName(const string &tableName, string &file
 		fileName = string(fileName_c);
 		// printf("nameLength: %d, fileName: %s, fileName_c: %s, tableId: %d\n", nameLength, fileName.c_str(), fileName_c, tableId);
 	}
-	else 
+	else {
+		free(data);
+		free(value);
 		return -1;
+	}
+	free(data);
+	free(value);
 	return 0;
 }
 
@@ -566,6 +848,11 @@ RC RelationManager::prepareCatalogColumnDescriptor(vector<Attribute> &attributes
 	attr.length=4;
 	attributes.push_back(attr);
 
+	attr.name="delete-flag";
+	attr.type=TypeInt;
+	attr.length=4;
+	attributes.push_back(attr);
+
 	return 0;
 }
 
@@ -590,9 +877,11 @@ RC RelationManager::prepareTablesRecord(const vector<Attribute> &recordDescripto
 	offset = offset+size;
 	memcpy((char *)data+offset,&isSystemTable,sizeof(int));
 	offset = offset+sizeof(int);
+
+	free(nullFieldsIndicator);
 }
 
-RC RelationManager::prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableId,Attribute attr, int position){
+RC RelationManager::prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableId,Attribute attr, int position,int deleteFlag){
 	int nFields = recordDescriptor.size();
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
 	unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
@@ -613,6 +902,10 @@ RC RelationManager::prepareColumnsRecord(const vector<Attribute> &recordDescript
 	offset=offset+sizeof(int);
 	memcpy((char *)data+offset,&position,sizeof(int));
 	offset=offset+sizeof(int);
+	memcpy((char *)data+offset,&deleteFlag,sizeof(int));  // 1 : already be deleted  
+	offset=offset+sizeof(int);
+
+	free(nullFieldsIndicator);
 }
 
 RC RelationManager::insertColumn(int tableId, const vector<Attribute> &attributes){
@@ -626,7 +919,8 @@ RC RelationManager::insertColumn(int tableId, const vector<Attribute> &attribute
 		return -1;
 	}
 	for(int i=0;i<attributes.size();i++){
-		prepareColumnsRecord(columndescriptor, data,tableId,attributes[i],i+1);
+		int isDeleted = attributes[i].length == 0 ? 1 : 0;
+		prepareColumnsRecord(columndescriptor, data,tableId,attributes[i],i+1,isDeleted);
 		rbfm->insertRecord(table_filehandle,columndescriptor,data,rid);
 	}
 	rbfm->closeFile(table_filehandle);
@@ -686,6 +980,8 @@ RC RelationManager::getTableId(const string &tableName, int &tableId){
 	}
 	else return -1;
 	rbfm_ScanIterator.close();
+	free(value);
+	free(data);
 	return 0;
 }
 
@@ -713,7 +1009,6 @@ RC RM_ScanIterator::close()
 }
 
 int RelationManager::generateNextTableId(){
-	FileHandle filehandle;
 	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
 
 	void *data = malloc(PAGE_SIZE);
@@ -744,13 +1039,12 @@ int RelationManager::generateNextTableId(){
 		if(tableId > maxId) maxId = tableId;
 	}
 	maxId++;
-	rbfm->closeFile(filehandle);
 	rm_ScanIterator.close();	
+	free(data);
 	return maxId;
 }
 
 int RelationManager::isSystemTable(const string &tableName){
-	FileHandle filehandle;
 	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
 
 	void *data = malloc(PAGE_SIZE);
@@ -790,6 +1084,7 @@ int RelationManager::isSystemTable(const string &tableName){
 		memcpy(&systemTableFlag, (char *)data + offset, sizeof(int));
 	}
 	rm_ScanIterator.close();	
-	rbfm->closeFile(filehandle);
+	free(data);
+	free(value);
 	return systemTableFlag;
 }
