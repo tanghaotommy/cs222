@@ -662,7 +662,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const vector<Att
 #endif
         int size = -1;
         memcpy((char *)page + offset, &size, sizeof(int));
-        printf("offset: %d\n", offset);
+        // printf("offset: %d\n", offset);
         if (oldRecordLength >= 3 * sizeof(int))
         {
             memcpy((char *)page + offset + sizeof(int), &tempRID.pageNum, sizeof(int));
