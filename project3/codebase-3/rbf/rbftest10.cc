@@ -95,13 +95,24 @@ int RBFTest_10(RecordBasedFileManager *rbfm) {
         rc = rbfm->readRecord(fileHandle, recordDescriptor, rids[i], returnedData);
         assert(rc == success && "Reading a record should not fail.");
         
-        if (i % 1000 == 0) {
+        if (i % 1000 == 0 || i == 1) {
             cout << endl << "Returned Data:" << endl;
             rbfm->printRecord(recordDescriptor, returnedData);
+
+            //Test updateRecord
+
+
+            //Test readAttribute
+            void *temp = malloc(4096);
+            rbfm->readAttribute(fileHandle, recordDescriptor, rids[i], "Int0", temp);
+            int res;
+            memcpy(&res, temp, sizeof(int));
+            printf("return value: %d\n", res);
+            free(temp);
         }
 
         int size = 0;
-        prepareLargeRecord(recordDescriptor.size(), nullsIndicator, i, record, &size);
+        prepareLargeRecord(recordDescriptor.size(), nullsIndicator, i == 0 ? 1 : i, record, &size);
         if(memcmp(returnedData, record, sizes[i]) != 0)
         {
             cout << "[FAIL] Test Case 10 Failed!" << endl << endl;

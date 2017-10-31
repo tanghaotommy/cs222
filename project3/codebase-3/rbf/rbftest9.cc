@@ -39,6 +39,7 @@ int RBFTest_9(RecordBasedFileManager *rbfm, vector<RID> &rids, vector<int> &size
 
     RID rid; 
     void *record = malloc(1000);
+
     int numRecords = 2000;
 
     vector<Attribute> recordDescriptor;
@@ -69,6 +70,13 @@ int RBFTest_9(RecordBasedFileManager *rbfm, vector<RID> &rids, vector<int> &size
         rids.push_back(rid);
         sizes.push_back(size);        
     }
+
+    //Test update record
+    int size = 0;
+    prepareLargeRecord(recordDescriptor.size(), nullsIndicator, 1, record, &size);
+    rc = rbfm->updateRecord(fileHandle, recordDescriptor, record, rids[0]);
+    assert(rc == success && "Update a record should not fail.");
+
     // Close the file "test9"
     rc = rbfm->closeFile(fileHandle);
     assert(rc == success && "Closing the file should not fail.");

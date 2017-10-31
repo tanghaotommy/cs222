@@ -38,6 +38,7 @@ typedef enum { EQ_OP = 0, // no condition// =
            NO_OP       // no condition
 } CompOp;
 
+typedef enum { LEFT = 0, RIGHT } Direction;
 
 /********************************************************************************
 The scan iterator is NOT required to be implemented for the part 1 of the project 
@@ -56,14 +57,24 @@ The scan iterator is NOT required to be implemented for the part 1 of the projec
 
 class RBFM_ScanIterator {
 public:
-  RBFM_ScanIterator() {};
+  RBFM_ScanIterator();
   ~RBFM_ScanIterator() {};
 
   // Never keep the results in the memory. When getNextRecord() is called, 
   // a satisfying record needs to be fetched from the file.
   // "data" follows the same format as RecordBasedFileManager::insertRecord().
-  RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
-  RC close() { return -1; };
+  RC getNextRecord(RID &rid, void *data);
+  RC close();
+
+  int cPage;
+  int cSlot;
+  FileHandle *fileHandle;
+  vector<Attribute> recordDescriptor;
+  int conditionAttributePosition;
+  CompOp compOp;
+  const void *value; 
+  int *attributePositions;
+  vector<string> attributeNames;
 };
 
 
@@ -104,6 +115,8 @@ public:
   // (e.g., age: 24  height: 6.1  salary: 9000
   //        age: NULL  height: 7.5  salary: 7500)
   RC printRecord(const vector<Attribute> &recordDescriptor, const void *data);
+  RC getRecordLength(const vector<Attribute> &recordDescriptor, const void *data);
+  RC getIndexList(const vector<Attribute> &recordDescriptor, const void *data, int *indexList);
 
 /******************************************************************************************************************************************************************
 IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) are NOT required to be implemented for the part 1 of the project
@@ -123,6 +136,8 @@ IMPORTANT, PLEASE READ: All methods below this comment (other than the construct
       const void *value,                    // used in the comparison
       const vector<string> &attributeNames, // a list of projected attributes
       RBFM_ScanIterator &rbfm_ScanIterator);
+
+  RC moveRecords(int offset, void *page, int slotNum, Direction direction);
 
 public:
 

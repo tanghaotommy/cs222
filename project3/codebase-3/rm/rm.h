@@ -4,7 +4,9 @@
 
 #include <string>
 #include <vector>
-
+#include <cstring>
+#include <cmath>
+#include <algorithm>
 #include "../rbf/rbfm.h"
 
 using namespace std;
@@ -18,8 +20,11 @@ public:
   ~RM_ScanIterator() {};
 
   // "data" follows the same format as RelationManager::insertTuple()
-  RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
-  RC close() { return -1; };
+  RC getNextTuple(RID &rid, void *data);
+  RC close();
+  RBFM_ScanIterator rbfm_ScanIterator;
+  FileHandle fileHandle;
+  
 };
 
 
@@ -52,7 +57,19 @@ public:
   RC printTuple(const vector<Attribute> &attrs, const void *data);
 
   RC readAttribute(const string &tableName, const RID &rid, const string &attributeName, void *data);
-
+  RC getTableId(const string &tableName, int &tableId);
+  RC prepareCatalogTableDescriptor(vector<Attribute> &attributes);
+  RC prepareCatalogColumnDescriptor(vector<Attribute> &attributes);
+  RC prepareTablesRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,const string tablename,int isSystemTable);
+  RC prepareColumnsRecord(const vector<Attribute> &recordDescriptor, void *data,int tableid,Attribute attr, int position,int isDeleted);
+  RC getFileNameByTableName(const string &tableName, string &fileName);
+  RC insertColumn(int tableid, const vector<Attribute> &attributes);
+  RC UpdateColumns(int tableid,vector<Attribute> attributes);
+  int isSystemTable(const string &tableName);
+  int generateNextTableId();
+  RC getAllAttributes(const string &tableName, vector<Attribute> &attrs);
+  RC removeNonExisted(const string &tableName, void* data);
+  int getSizeOfdata(vector<Attribute> &attr, void* data);
   // Scan returns an iterator to allow the caller to go through the results one by one.
   // Do not store entire results in the scan iterator.
   RC scan(const string &tableName,
@@ -72,7 +89,7 @@ public:
 protected:
   RelationManager();
   ~RelationManager();
-
+  RecordBasedFileManager* rbfm;
 };
 
 #endif
