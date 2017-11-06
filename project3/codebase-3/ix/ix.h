@@ -126,7 +126,7 @@ public:
     int next = -1;
     int previous = -1;
     int cPage = -1;
-    int order = 2;
+    int order = 7;
     bool isLoaded = false;
 
     Node(const Attribute *attribute, const void* page);

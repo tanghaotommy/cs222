@@ -57,7 +57,48 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         root.serialize(page);
         ixfileHandle.fileHandle.appendPage(page);
         free(page);
-    }
+    } 
+    // else
+    // {
+    //     void *page = malloc(PAGE_SIZE);
+    //     ixfileHandle.fileHandle.readPage(0, page);
+    //     Node root = Node(attribute, page);
+    //     if (root.nodeType == RootOnly)
+    //     {
+    //         int pos = root.getChildPos(key);
+    //         root.insertKey(pos, key); //Insert into vector.
+    //         root.insertChild(pos, rid); //Insert into vector.
+    //         if (root.pointers.size() > root.order - 1)
+    //         {
+    //             //split
+    //         } else
+    //         {
+    //             void *page = malloc(PAGE_SIZE);
+    //             root.serialize(page);
+    //             ixfileHandle.fileHandle.writePage(root.cPage, page);
+    //             free(page);
+    //         }
+    //     } else
+    //     {
+    //         vector<Node> path;
+    //         this->traverseToLeafWithPath(root, path);
+    //         Node *leaf = &path[path.size() - 1];
+
+    //         int pos = leaf->getChildPos(key);
+    //         leaf->insertKey(pos, key); //Insert into vector.
+    //         leaf->insertChild(pos, rid); //Insert into vector.
+    //         if (leaf->pointers.size() > leaf->order - 1)
+    //         {
+    //             //split
+    //         }
+    //         else {
+    //             void *page = malloc(PAGE_SIZE);
+    //             leaf->serialize(page);
+    //             ixfileHandle.fileHandle.writePage(leaf->cPage, page);
+    //             free(page);
+    //         }
+    //     }
+    // }
     return 0;
 }
 
@@ -144,10 +185,16 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         traverseToLeaf(node);
         this->cPage = node->cPage;
     }
-    printf("HERE\n");
     while(1)
     {
         this->cRec++;
+        if (this->cRec >= node->pointers.size() && node->next != -1)
+        {
+            void *page = malloc(PAGE_SIZE);
+            this->ixfileHandle->fileHandle.readPage(node->next, page);
+            node = new Node(this->attribute, page);
+        }
+
         if (this->cRec >= node->pointers.size() && node->next == -1)
         {
             delete node;
