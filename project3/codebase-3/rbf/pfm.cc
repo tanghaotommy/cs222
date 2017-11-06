@@ -89,10 +89,14 @@ FileHandle::FileHandle()
 RC FileHandle::readCounter()
 {
     void *page = malloc(PAGE_SIZE);
-    this->readPage(-1, page);
+
+    fs.seekg(0);
+    fs.read((char *)page, PAGE_SIZE);
     memcpy(&this->readPageCounter, (char *)page, sizeof(unsigned));
     memcpy(&this->writePageCounter, (char *)page + sizeof(unsigned), sizeof(unsigned));
     memcpy(&this->appendPageCounter, (char *)page + 2 * sizeof(unsigned), sizeof(unsigned));
+    // printf("[readCounter] %d, %d, %d\n", this->readPageCounter, this->writePageCounter, this->appendPageCounter);
+
     return 0;
 }
 
@@ -102,12 +106,15 @@ RC FileHandle::writeCounter()
     memcpy((char *)page, &this->readPageCounter, sizeof(unsigned));
     memcpy((char *)page + sizeof(unsigned), &this->writePageCounter, sizeof(unsigned));
     memcpy((char *)page + 2 * sizeof(unsigned), &this->appendPageCounter, sizeof(unsigned));
-    this->writePage(-1, page);
+    fs.seekg(0);
+    fs.write((char *)page, PAGE_SIZE);
     return 0;
 }
 
 RC FileHandle::openFile(const string &fileName)
 {
+    if (fs.is_open())
+        return -1;
     try
     {
         if(!fexists(fileName.c_str()))
@@ -125,7 +132,7 @@ RC FileHandle::openFile(const string &fileName)
 
 RC FileHandle::closeFile()
 {
-    if (fs)
+    if (fs.is_open())
     {
         try
         {

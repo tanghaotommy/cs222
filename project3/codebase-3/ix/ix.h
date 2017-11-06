@@ -8,6 +8,8 @@
 
 # define IX_EOF (-1)  // end of the index scan
 
+//# define DEBUG_IX
+
 class IX_ScanIterator;
 class IXFileHandle;
 
@@ -45,6 +47,7 @@ class IndexManager {
 
         // Print the B+ tree in pre-order (in a JSON record format)
         void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
+        void printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const;
 
     protected:
         IndexManager();
@@ -69,6 +72,14 @@ class IX_ScanIterator {
 
         // Terminate index scan
         RC close();
+
+        IXFileHandle *ixfileHandle;
+        const Attribute *attribute;
+        const void *lowKey;
+        const void *highKey;
+        bool lowKeyInclusive;
+        bool highKeyInclusive;
+        int cPage;
 };
 
 
@@ -90,6 +101,35 @@ class IXFileHandle {
 	// Put the current counter values of associated PF FileHandles into variables
 	RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 
+    FileHandle fileHandle;
+
+};
+
+typedef enum { RootNode = 0, InternalNode, LeafNode, RootOnly } NodeType;
+
+class Node {
+public:
+    NodeType nodeType;
+    AttrType attrType;
+    const Attribute * attribute; 
+    vector<void *> keys;
+    vector<int> children; //pointers to children
+    vector<RID> pointers; //where the record lies
+    int next = -1;
+    int previous = -1;
+    int cPage = -1;
+    int order = 2;
+    bool isLoaded = false;
+
+    Node(const Attribute *attribute, const void* page);
+    Node(const Attribute &attribute);
+    ~Node();
+    RC serialize(void *page);
+    RC insert(void* key, RID rid);
+    RC insert(void* key, int child);
+    RC insertKey(const void* key);
+    RC printKeys();
+    RC printRids();
 };
 
 #endif
