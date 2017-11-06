@@ -80,6 +80,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
     ix_ScanIterator.highKey = highKey;
     ix_ScanIterator.lowKeyInclusive = lowKeyInclusive;
     ix_ScanIterator.highKeyInclusive = highKeyInclusive;
+    ix_ScanIterator.ixfileHandle = &ixfileHandle;
     return 0;
 }
 
@@ -121,6 +122,7 @@ void IndexManager::printNode(IXFileHandle &ixfileHandle, const Attribute &attrib
 IX_ScanIterator::IX_ScanIterator()
 {
     this->cPage = 0;
+    this->cRec = -1;
 }
 
 IX_ScanIterator::~IX_ScanIterator()
@@ -132,14 +134,80 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     if (!this->cPage < this->ixfileHandle->fileHandle.getNumberOfPages())
         return 1;
     void *page = malloc(PAGE_SIZE);
-    ixfileHandle->fileHandle.readPage(this->cPage, page);
-    // Node node(this->attribute, page);
+    this->ixfileHandle->fileHandle.readPage(this->cPage, page);
+    Node *node = new Node(this->attribute, page);
+    node->printRids();
+    printf("\n");
+
+    if (node->nodeType != RootOnly && node->nodeType != LeafNode)
+    {
+        traverseToLeaf(node);
+        this->cPage = node->cPage;
+    }
+    printf("HERE\n");
+    while(1)
+    {
+        this->cRec++;
+        if (this->cRec >= node->pointers.size() && node->next == -1)
+        {
+            delete node;
+            free(page);
+            return IX_EOF;
+        }
+        else
+        {
+            this->cRec = 0;
+            this->cPage = node->next;
+            this->ixfileHandle->fileHandle.readPage(this->cPage, page);
+            node = new Node(this->attribute, page);
+        }
+        if (lowKey != NULL)
+            if (!((this->lowKeyInclusive && isLargerAndEqualThan(this->attribute, node->keys[this->cRec], this->lowKey)) || 
+                (!this->lowKeyInclusive && isLargerThan(this->attribute, node->keys[this->cRec], this->lowKey))))
+                continue;
+        if (highKey != NULL)
+            if (!((this->highKeyInclusive && isLessAndEqualThan(this->attribute, node->keys[this->cRec], this->highKey)) || 
+                (!this->highKeyInclusive && isLessThan(this->attribute, node->keys[this->cRec], this->highKey))))
+            {
+                delete node;
+                free(page);
+                return IX_EOF;        
+            }
+        rid.pageNum = node->pointers[this->cRec].pageNum;
+        rid.slotNum = node->pointers[this->cRec].slotNum;
+        if (this->attribute->type == TypeInt || this->attribute->type == TypeReal)
+            memcpy(key, node->keys[this->cRec], this->attribute->length);
+        else
+        {
+            int nameLength;
+            memcpy(&nameLength, (char *)node->keys[this->cRec], sizeof(int));
+            memcpy(key, &nameLength, sizeof(int));
+            memcpy((char *)key + sizeof(int), (char *)node->keys[this->cRec] + sizeof(int), nameLength);
+        }
+        break;
+    }
+    delete node;
     free(page);
+    return 0;
+}
+
+RC IX_ScanIterator::traverseToLeaf(Node *node)
+{
+    while (node->nodeType != RootOnly && node->nodeType != LeafNode)
+    {
+        int pos = node->getChildPos(this->lowKey);
+        void *page = malloc(PAGE_SIZE);
+        this->ixfileHandle->fileHandle.readPage(node->children[pos], page);
+        node = new Node(this->attribute, page);
+        free(page);
+    }
+    return 0;
 }
 
 RC IX_ScanIterator::close()
 {
     this->cPage = 0;
+    this->cRec = -1;
     return 0;
 }
 
@@ -429,4 +497,167 @@ RC Node::printRids()
     }
     printf("]");
     return 0;
+}
+
+int Node::getChildPos(const void* value)
+{
+    int i;
+    for (i = 0; i < this->keys.size(); ++i)
+    {
+        if (isLessThan(this->attribute, value, this->keys[i]))
+            break;
+    }
+    return i;
+}
+
+bool isLessThan(const Attribute *attribute, const void* compValue, const void* compKey)
+{
+    if (attribute->type == TypeInt)
+    {
+        int value;
+        int key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value < key;
+    }
+    else if (attribute->type == TypeReal)
+    {
+        float value;
+        float key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value < key;
+    }
+    else if (attribute->type == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)compValue, sizeof(int));
+        char* value_c = (char *)malloc(nameLength + 1);
+        memcpy(value_c, (char *)compValue + sizeof(int), nameLength);
+        value_c[nameLength] = '\0';
+        string value = string(value_c);
+
+        memcpy(&nameLength, (char *)compKey, sizeof(int));
+        char* key_c = (char *)malloc(nameLength + 1);
+        memcpy(key_c, (char *)compKey + sizeof(int), nameLength);
+        key_c[nameLength] = '\0';
+        string key = string(key_c);
+        free(value_c);
+        free(key_c);
+        return value < key;
+    }    
+}
+
+bool isLessAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey)
+{
+    if (attribute->type == TypeInt)
+    {
+        int value;
+        int key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value <= key;
+    }
+    else if (attribute->type == TypeReal)
+    {
+        float value;
+        float key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value <= key;
+    }
+    else if (attribute->type == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)compValue, sizeof(int));
+        char* value_c = (char *)malloc(nameLength + 1);
+        memcpy(value_c, (char *)compValue + sizeof(int), nameLength);
+        value_c[nameLength] = '\0';
+        string value = string(value_c);
+
+        memcpy(&nameLength, (char *)compKey, sizeof(int));
+        char* key_c = (char *)malloc(nameLength + 1);
+        memcpy(key_c, (char *)compKey + sizeof(int), nameLength);
+        key_c[nameLength] = '\0';
+        string key = string(key_c);
+        free(value_c);
+        free(key_c);
+        return value <= key;
+    }    
+}
+
+bool isLargerAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey)
+{
+    if (attribute->type == TypeInt)
+    {
+        int value;
+        int key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value >= key;
+    }
+    else if (attribute->type == TypeReal)
+    {
+        float value;
+        float key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value >= key;
+    }
+    else if (attribute->type == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)compValue, sizeof(int));
+        char* value_c = (char *)malloc(nameLength + 1);
+        memcpy(value_c, (char *)compValue + sizeof(int), nameLength);
+        value_c[nameLength] = '\0';
+        string value = string(value_c);
+
+        memcpy(&nameLength, (char *)compKey, sizeof(int));
+        char* key_c = (char *)malloc(nameLength + 1);
+        memcpy(key_c, (char *)compKey + sizeof(int), nameLength);
+        key_c[nameLength] = '\0';
+        string key = string(key_c);
+        free(value_c);
+        free(key_c);
+        return value >= key;
+    }    
+}
+
+bool isLargerThan(const Attribute *attribute, const void* compValue, const void* compKey)
+{
+    if (attribute->type == TypeInt)
+    {
+        int value;
+        int key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value > key;
+    }
+    else if (attribute->type == TypeReal)
+    {
+        float value;
+        float key;
+        memcpy(&value, (char *)compValue, sizeof(attribute->length));
+        memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        return value > key;
+    }
+    else if (attribute->type == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)compValue, sizeof(int));
+        char* value_c = (char *)malloc(nameLength + 1);
+        memcpy(value_c, (char *)compValue + sizeof(int), nameLength);
+        value_c[nameLength] = '\0';
+        string value = string(value_c);
+
+        memcpy(&nameLength, (char *)compKey, sizeof(int));
+        char* key_c = (char *)malloc(nameLength + 1);
+        memcpy(key_c, (char *)compKey + sizeof(int), nameLength);
+        key_c[nameLength] = '\0';
+        string key = string(key_c);
+        free(value_c);
+        free(key_c);
+        return value > key;
+    }    
 }

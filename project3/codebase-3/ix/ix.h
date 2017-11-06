@@ -10,8 +10,14 @@
 
 //# define DEBUG_IX
 
+bool isLessThan(const Attribute *attribute, const void* compValue, const void* compKey);
+bool isLessAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey);
+bool isLargerThan(const Attribute *attribute, const void* compValue, const void* compKey);
+bool isLargerAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey);
+
 class IX_ScanIterator;
 class IXFileHandle;
+class Node;
 
 class IndexManager {
 
@@ -72,6 +78,7 @@ class IX_ScanIterator {
 
         // Terminate index scan
         RC close();
+        RC traverseToLeaf(Node *node);
 
         IXFileHandle *ixfileHandle;
         const Attribute *attribute;
@@ -80,6 +87,7 @@ class IX_ScanIterator {
         bool lowKeyInclusive;
         bool highKeyInclusive;
         int cPage;
+        int cRec;
 };
 
 
@@ -130,6 +138,8 @@ public:
     RC insertKey(const void* key);
     RC printKeys();
     RC printRids();
+    int getChildPos(const void* value);
+    // bool isLessThan(const void* compValue, const void* compKey);
 };
 
 #endif
