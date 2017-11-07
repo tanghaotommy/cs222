@@ -49,7 +49,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     {
         Node root = Node(attribute);
         root.nodeType = RootOnly;
-        root.insertKey(key);
+        root.appendKey(key);
         vector <RID> records;
         records.push_back(rid);
         root.pointers.push_back(records);
@@ -180,8 +180,8 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     void *page = malloc(PAGE_SIZE);
     this->ixfileHandle->fileHandle.readPage(this->cPage, page);
     Node *node = new Node(this->attribute, page);
-    node->printRids();
-    printf("\n");
+    // node->printRids();
+    // printf("\n");
 
     if (node->nodeType != RootOnly && node->nodeType != LeafNode)
     {
@@ -191,7 +191,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     while(1)
     {
         this->cRec++;
-        if (this->cRec >= node->pointers[this->cKey].size() - 1)
+        if (this->cRec >= node->pointers[this->cKey].size())
         {
             this->cRec = 0;
             this->cKey++;
@@ -205,12 +205,15 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             this->cKey = 0;
         }
 
-        if (this->cRec >= node->pointers.size() && node->next == -1)
+        if (this->cKey >= node->keys.size() && node->next == -1)
         {
             delete node;
             free(page);
             return IX_EOF;
         }
+#ifdef DEBUG_IX
+        printf("[getNextEntry](%d, %d, %d)\n", this->cPage, this->cKey, this->cRec);
+#endif
         // else
         // {
         //     this->cRec = 0;
@@ -219,12 +222,12 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         //     node = new Node(this->attribute, page);
         // }
         if (lowKey != NULL)
-            if (!((this->lowKeyInclusive && isLargerAndEqualThan(this->attribute, node->keys[this->cRec], this->lowKey)) || 
-                (!this->lowKeyInclusive && isLargerThan(this->attribute, node->keys[this->cRec], this->lowKey))))
+            if (!((this->lowKeyInclusive && isLargerAndEqualThan(this->attribute, node->keys[this->cKey], this->lowKey)) || 
+                (!this->lowKeyInclusive && isLargerThan(this->attribute, node->keys[this->cKey], this->lowKey))))
                 continue;
         if (highKey != NULL)
-            if (!((this->highKeyInclusive && isLessAndEqualThan(this->attribute, node->keys[this->cRec], this->highKey)) || 
-                (!this->highKeyInclusive && isLessThan(this->attribute, node->keys[this->cRec], this->highKey))))
+            if (!((this->highKeyInclusive && isLessAndEqualThan(this->attribute, node->keys[this->cKey], this->highKey)) || 
+                (!this->highKeyInclusive && isLessThan(this->attribute, node->keys[this->cKey], this->highKey))))
             {
                 delete node;
                 free(page);
@@ -233,13 +236,13 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         rid.pageNum = node->pointers[this->cKey][this->cRec].pageNum;
         rid.slotNum = node->pointers[this->cKey][this->cRec].slotNum;
         if (this->attribute->type == TypeInt || this->attribute->type == TypeReal)
-            memcpy(key, node->keys[this->cRec], this->attribute->length);
+            memcpy(key, node->keys[this->cKey], this->attribute->length);
         else
         {
             int nameLength;
-            memcpy(&nameLength, (char *)node->keys[this->cRec], sizeof(int));
+            memcpy(&nameLength, (char *)node->keys[this->cKey], sizeof(int));
             memcpy(key, &nameLength, sizeof(int));
-            memcpy((char *)key + sizeof(int), (char *)node->keys[this->cRec] + sizeof(int), nameLength);
+            memcpy((char *)key + sizeof(int), (char *)node->keys[this->cKey] + sizeof(int), nameLength);
         }
         break;
     }
@@ -467,7 +470,7 @@ RC Node::serialize(void * page)
     return 0;
 }
 
-RC Node::insertKey(const void* key)
+RC Node::appendKey(const void* key)
 {
     printf(".....inserting keys, type: %d\n", this->attrType);
     if (this->attrType == TypeInt)

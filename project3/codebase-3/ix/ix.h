@@ -136,7 +136,8 @@ public:
     RC serialize(void *page);
     RC insert(void* key, RID rid);
     RC insert(void* key, int child);
-    RC insertKey(const void* key);
+    RC insertKey(int pos, const void* key);
+    RC appendKey(const void* key);
     RC printKeys();
     RC printRids();
     int getChildPos(const void* value);
