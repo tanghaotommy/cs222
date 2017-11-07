@@ -88,6 +88,7 @@ class IX_ScanIterator {
         bool highKeyInclusive;
         int cPage;
         int cRec;
+        int cKey;
 };
 
 
@@ -122,7 +123,7 @@ public:
     const Attribute * attribute; 
     vector<void *> keys;
     vector<int> children; //pointers to children
-    vector<RID> pointers; //where the record lies
+    vector<vector<RID>> pointers; //where the record lies
     int next = -1;
     int previous = -1;
     int cPage = -1;

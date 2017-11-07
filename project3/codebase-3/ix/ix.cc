@@ -50,7 +50,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         Node root = Node(attribute);
         root.nodeType = RootOnly;
         root.insertKey(key);
-        root.pointers.push_back(rid);
+        vector <RID> records;
+        records.push_back(rid);
+        root.pointers.push_back(records);
         // root.printRids();
         // printf("\n");
         void *page = malloc(PAGE_SIZE);
@@ -163,6 +165,7 @@ void IndexManager::printNode(IXFileHandle &ixfileHandle, const Attribute &attrib
 IX_ScanIterator::IX_ScanIterator()
 {
     this->cPage = 0;
+    this->cKey = 0;
     this->cRec = -1;
 }
 
@@ -188,11 +191,18 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     while(1)
     {
         this->cRec++;
-        if (this->cRec >= node->pointers.size() && node->next != -1)
+        if (this->cRec >= node->pointers[this->cKey].size() - 1)
+        {
+            this->cRec = 0;
+            this->cKey++;
+        }
+        if (this->cKey >= node->pointers.size() && node->next != -1)
         {
             void *page = malloc(PAGE_SIZE);
             this->ixfileHandle->fileHandle.readPage(node->next, page);
             node = new Node(this->attribute, page);
+            this->cRec = 0;
+            this->cKey = 0;
         }
 
         if (this->cRec >= node->pointers.size() && node->next == -1)
@@ -201,13 +211,13 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             free(page);
             return IX_EOF;
         }
-        else
-        {
-            this->cRec = 0;
-            this->cPage = node->next;
-            this->ixfileHandle->fileHandle.readPage(this->cPage, page);
-            node = new Node(this->attribute, page);
-        }
+        // else
+        // {
+        //     this->cRec = 0;
+        //     this->cPage = node->next;
+        //     this->ixfileHandle->fileHandle.readPage(this->cPage, page);
+        //     node = new Node(this->attribute, page);
+        // }
         if (lowKey != NULL)
             if (!((this->lowKeyInclusive && isLargerAndEqualThan(this->attribute, node->keys[this->cRec], this->lowKey)) || 
                 (!this->lowKeyInclusive && isLargerThan(this->attribute, node->keys[this->cRec], this->lowKey))))
@@ -220,8 +230,8 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
                 free(page);
                 return IX_EOF;        
             }
-        rid.pageNum = node->pointers[this->cRec].pageNum;
-        rid.slotNum = node->pointers[this->cRec].slotNum;
+        rid.pageNum = node->pointers[this->cKey][this->cRec].pageNum;
+        rid.slotNum = node->pointers[this->cKey][this->cRec].slotNum;
         if (this->attribute->type == TypeInt || this->attribute->type == TypeReal)
             memcpy(key, node->keys[this->cRec], this->attribute->length);
         else
@@ -254,6 +264,7 @@ RC IX_ScanIterator::traverseToLeaf(Node *node)
 RC IX_ScanIterator::close()
 {
     this->cPage = 0;
+    this->cKey = 0;
     this->cRec = -1;
     return 0;
 }
@@ -343,12 +354,23 @@ Node::Node(const Attribute *attribute, const void *page)
 #endif
         for (int i = 0; i < nRids; ++i)
         {
-            RID rid;
-            memcpy(&rid.pageNum, (char *)page + offset, sizeof(int));
+            int nRecords;
+            memcpy(&nRecords, (char *)page + offset, sizeof(int));
             offset += sizeof(int);
-            memcpy(&rid.slotNum, (char *)page + offset, sizeof(int));
-            offset += sizeof(int);
-            this->pointers.push_back(rid);
+#ifdef DEBUG_IX
+            printf("[Node] nRecords %d, offset: %d\n", nRecords, offset - sizeof(int));
+#endif
+            vector <RID> records;
+            for (int j = 0; j < nRecords; ++j)
+            {
+                RID rid;
+                memcpy(&rid.pageNum, (char *)page + offset, sizeof(int));
+                offset += sizeof(int);
+                memcpy(&rid.slotNum, (char *)page + offset, sizeof(int));
+                offset += sizeof(int);
+                records.push_back(rid);
+            }
+            this->pointers.push_back(records);
         }
     }
     else
@@ -413,12 +435,21 @@ RC Node::serialize(void * page)
         offset += sizeof(int);
         for (int i = 0; i < nRids; ++i)
         {
-            int pageNum = this->pointers[i].pageNum;
-            int slotNum = this->pointers[i].slotNum;
-            memcpy((char *)page + offset, &pageNum, sizeof(int));
+            int nRecords = pointers[i].size();
+            memcpy((char *)page + offset, &nRecords, sizeof(int));
             offset += sizeof(int);
-            memcpy((char *)page + offset, &slotNum, sizeof(int));
-            offset += sizeof(int);
+#ifdef DEBUG_IX
+            printf("[serialize] nRecords %d, offset: %d\n", pointers[i].size(), offset - sizeof(int));
+#endif
+            for (int j = 0; j < nRecords; ++j)
+            {
+                int pageNum = this->pointers[i][j].pageNum;
+                int slotNum = this->pointers[i][j].slotNum;
+                memcpy((char *)page + offset, &pageNum, sizeof(int));
+                offset += sizeof(int);
+                memcpy((char *)page + offset, &slotNum, sizeof(int));
+                offset += sizeof(int);
+            }
         }
     }
     else
@@ -519,13 +550,13 @@ RC Node::printRids()
 #ifdef DEBUG_IX
             printf("[printRids] nPointers %d\n", pointers.size());
 #endif
-            printf("%d:(%d, %d)", value, this->pointers[i].pageNum, this->pointers[i].slotNum);
+            printf("%d:", value);
         }
         else if (this->attrType == TypeReal)
         {
             float value;
             memcpy(&value, (char *)this->keys[i], sizeof(attribute->length));
-            printf("%f:(%d, %d)", value, this->pointers[i].pageNum, this->pointers[i].slotNum);
+            printf("%f:", value);
         }
         else if (this->attrType == TypeVarChar)
         {
@@ -535,10 +566,20 @@ RC Node::printRids()
             char* value_c = (char *)malloc(nameLength + 1);
             memcpy(value_c, (char *)this->keys[i] + sizeof(int), nameLength);
             value_c[nameLength] = '\0';
-            printf("\"%s:(%d, %d)\"\n", value_c, this->pointers[i].pageNum, this->pointers[i].slotNum);
+            printf("\"%s:", value_c);
             free(value_c);
         }
 
+        printf("[");
+        for (int j = 0; j < this->pointers[i].size(); ++j)
+        {
+            printf("(%d, %d)", this->pointers[i][j].pageNum, this->pointers[i][j].slotNum);
+            if (i != this->keys.size() - 1)
+                printf(",");
+        }
+        printf("]");
+        if (this->attrType == TypeVarChar)
+            printf("\"");
         if (i != this->keys.size() - 1)
             printf(",");
     }
