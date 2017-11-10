@@ -55,52 +55,347 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         root.pointers.push_back(records);
         // root.printRids();
         // printf("\n");
+        root.cPage = 0;
         void *page = malloc(PAGE_SIZE);
         root.serialize(page);
         ixfileHandle.fileHandle.appendPage(page);
         free(page);
     } 
-    // else
-    // {
-    //     void *page = malloc(PAGE_SIZE);
-    //     ixfileHandle.fileHandle.readPage(0, page);
-    //     Node root = Node(attribute, page);
-    //     if (root.nodeType == RootOnly)
-    //     {
-    //         int pos = root.getChildPos(key);
-    //         root.insertKey(pos, key); //Insert into vector.
-    //         root.insertChild(pos, rid); //Insert into vector.
-    //         if (root.pointers.size() > root.order - 1)
-    //         {
-    //             //split
-    //         } else
-    //         {
-    //             void *page = malloc(PAGE_SIZE);
-    //             root.serialize(page);
-    //             ixfileHandle.fileHandle.writePage(root.cPage, page);
-    //             free(page);
-    //         }
-    //     } else
-    //     {
-    //         vector<Node> path;
-    //         this->traverseToLeafWithPath(root, path);
-    //         Node *leaf = &path[path.size() - 1];
+    else
+    {
+        //this-> printBtree(ixfileHandle,attribute);
+        void *page = malloc(PAGE_SIZE);
+        ixfileHandle.fileHandle.readPage(0, page);
+        Node root = Node(&attribute, page);
+        // free(page);
+        if (root.nodeType == RootOnly)
+        {
+            
+            int pos = root.getChildPos(key);
+             
+            root.insertKey(pos, key); //Insert into vector.
+            root.insertPointer(pos, rid, key); //Insert into vector.
+            vector<Node*> path;
+            path.push_back(&root);
+            if (root.pointers.size() > 2*root.order)
+            {
+                #ifdef DEBUG_IX
+                printf("[insertEntry] RootOnly split\n");
+                #endif
+                split(path, ixfileHandle);                            
+            } else
+            {   
+                #ifdef DEBUG_IX
+                printf("[insertEntry] RootOnly write to %d page\n", root.cPage);
+                #endif
+                realloc(page, PAGE_SIZE);
+                root.serialize(page);
+                int rc = ixfileHandle.fileHandle.writePage(root.cPage, page);
+                // this->printBtree(ixfileHandle, attribute);  
+                free(page);
+                return 0;
+            }
+        } 
+        else
+        {
+            vector<Node*> path;
+            this->traverseToLeafWithPath(ixfileHandle, root, path, key, attribute);
+            Node *leaf = path[path.size() - 1];
 
-    //         int pos = leaf->getChildPos(key);
-    //         leaf->insertKey(pos, key); //Insert into vector.
-    //         leaf->insertChild(pos, rid); //Insert into vector.
-    //         if (leaf->pointers.size() > leaf->order - 1)
-    //         {
-    //             //split
-    //         }
-    //         else {
-    //             void *page = malloc(PAGE_SIZE);
-    //             leaf->serialize(page);
-    //             ixfileHandle.fileHandle.writePage(leaf->cPage, page);
-    //             free(page);
-    //         }
-    //     }
-    // }
+            int pos = leaf->getChildPos(key);
+            leaf->insertKey(pos, key); //Insert into vector.
+            leaf->insertPointer(pos, rid, key); //Insert into vector.
+            if (leaf->keys.size() > 2*leaf->order)
+            {
+                split(path, ixfileHandle);                            
+            }
+            else {
+                void *page = malloc(PAGE_SIZE);
+                leaf->serialize(page);
+                ixfileHandle.fileHandle.writePage(leaf->cPage, page);
+                free(page);
+            }
+        }
+    }
+    //this->printBtree(ixfileHandle, attribute); 
+    return 0;
+}
+
+RC IndexManager::traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node root, vector<Node*> path, const void *key, const Attribute &attribute)
+{
+    
+    path.push_back(&root);
+    if(root.nodeType == LeafNode) return 0;
+    int pos = root.getChildPos(key);            
+    void *page = malloc(PAGE_SIZE);     
+    ixfileHandle.fileHandle.readPage(root.children[pos], page);
+    Node node(&attribute, page);   
+    node.cPage = root.children[pos];
+    free(page);   
+    traverseToLeafWithPath(ixfileHandle, node, path, key, attribute);                
+    return 0;
+}
+
+RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
+{
+
+}
+
+RC IndexManager::split(vector<Node> path, IXFileHandle &ixfileHandle)
+{
+    Node *node = &path[path.size() - 1];    
+    if(node->nodeType == LeafNode)
+    {
+        int order = node->order; 
+
+        Node new_leaf = Node(node->attribute);
+        new_leaf.nodeType = LeafNode;
+
+        for(int i=order;i < node->keys.size();i++)
+        {
+            new_leaf.appendKey(node->keys[i]);
+            new_leaf.appendPointer(node->pointers[i]);
+        }
+        node->keys.erase(node->keys.begin() + order,node->keys.begin() + node->keys.size());
+        node->pointers.erase(node->pointers.begin() + order,node->pointers.begin() + node->pointers.size());
+        void *page = malloc(PAGE_SIZE);
+        ixfileHandle.fileHandle.appendPage(page);
+        new_leaf.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
+        free(page);
+        node->next = new_leaf.cPage;
+        writeNodeToPage(ixfileHandle, node);
+        new_leaf.previous = node->cPage;
+        writeNodeToPage(ixfileHandle, &new_leaf);
+        path.pop_back();
+        Node *parent = &path[path.size() - 1];
+
+        int pos = parent->getChildPos(new_leaf.keys[0]);
+        parent->insertKey(pos, new_leaf.keys[0]); 
+
+        parent->insertChild(pos + 1, new_leaf.cPage); 
+        
+        if(parent->keys.size() > 2 * parent->order)
+        {
+            split(path, ixfileHandle);            
+        }
+        else writeNodeToPage(ixfileHandle, parent);
+    }
+    else if(node->nodeType == InternalNode)
+    {
+        int order = node->order;  
+        Node new_intermediate(node->attribute);
+        path.pop_back();
+        Node *parent = &path[path.size() - 1];
+
+        new_intermediate.nodeType = node->nodeType;
+
+        for(int i = order + 1;i < node->keys.size();i++)
+        {
+            new_intermediate.appendKey(node->keys[i]);
+        }
+        for(int i = order + 1;i < node->children.size();i++)
+        {
+            new_intermediate.appendChild(node->children[i]);
+        }
+
+        void *page = malloc(PAGE_SIZE);
+        ixfileHandle.fileHandle.appendPage(page);
+        new_intermediate.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
+        free(page);
+        int pos = parent->getChildPos(node->keys[order]);
+        parent->insertKey(pos, node->keys[0]); 
+
+        parent->insertChild(pos + 1, new_intermediate.cPage);  //TODO Always pos + 1? what if it's first child?
+
+        writeNodeToPage(ixfileHandle, &new_intermediate);
+        node->keys.erase(node->keys.begin() + order,node->keys.begin() + node->keys.size());
+        node->children.erase(node->children.begin() + order + 1,node->children.begin() + node->children.size());
+        writeNodeToPage(ixfileHandle, node);
+        
+        if(parent->keys.size() > 2 * parent->order)
+        {
+            split(path, ixfileHandle);            
+        }
+        else writeNodeToPage(ixfileHandle, parent);
+    }
+    else if(node->nodeType == RootOnly)
+    {
+        int order = node->order;  
+        Node new_leafNode1(node->attribute);
+        Node new_leafNode2(node->attribute);
+        node->nodeType = RootNode;
+        new_leafNode1.nodeType = LeafNode;
+        new_leafNode2.nodeType = LeafNode;
+        //node->children.append();
+        for(int i = 0;i < node->keys.size();i++)
+        {
+            if(i < order){
+                new_leafNode1.appendKey(node->keys[i]);
+                new_leafNode1.appendPointer(node->pointers[i]);
+            }
+            else if(i >= order){   //
+                new_leafNode2.appendKey(node->keys[i]);
+                new_leafNode2.appendPointer(node->pointers[i]);
+            }
+        }
+        node->keys.erase(node->keys.begin() + order+1,node->keys.begin() + node->keys.size());
+        node->keys.erase(node->keys.begin(),node->keys.begin() + order);
+        node->pointers.clear();
+        void *page1 = malloc(PAGE_SIZE);
+        ixfileHandle.fileHandle.appendPage(page1);
+        new_leafNode1.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
+        void *page2 = malloc(PAGE_SIZE);
+        ixfileHandle.fileHandle.appendPage(page2);
+        new_leafNode2.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
+        free(page1);
+        free(page2);
+        node->children.push_back(new_leafNode1.cPage);
+        node->children.push_back(new_leafNode2.cPage);
+        writeNodeToPage(ixfileHandle, node);
+
+        new_leafNode1.next = new_leafNode2.cPage;
+        new_leafNode2.previous = new_leafNode1.cPage;
+        writeNodeToPage(ixfileHandle, &new_leafNode1);
+        writeNodeToPage(ixfileHandle, &new_leafNode2);
+
+    }
+    else if(node->nodeType == RootNode)
+    {
+        int order = node->order;  
+        Node new_intermediate1(node->attribute);
+        Node new_intermediate2(node->attribute);
+
+        new_intermediate1.nodeType = InternalNode;
+        new_intermediate2.nodeType = InternalNode;
+        for(int i = 0;i < node->keys.size();i++)
+        {
+            if(i < order){
+                new_intermediate1.appendKey(node->keys[i]);
+            }
+            else if(i > order){
+                new_intermediate2.appendKey(node->keys[i]);
+            }
+        }
+        for(int i = 0;i < node->children.size();i++)
+        {
+            if(i < order + 1){
+                new_intermediate1.appendChild(node->children[i]);
+            }
+            else if(i >= order + 1){
+                new_intermediate2.appendChild(node->children[i]);
+            }
+        }
+        node->keys.erase(node->keys.begin() + order+1,node->keys.begin() + node->keys.size());
+        node->keys.erase(node->keys.begin(),node->keys.begin() + order);
+        void *page1 = malloc(PAGE_SIZE);
+        void *page2 = malloc(PAGE_SIZE);
+        ixfileHandle.fileHandle.appendPage(page1);
+        new_intermediate1.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
+        ixfileHandle.fileHandle.appendPage(page2);
+        new_intermediate2.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
+        free(page1);
+        free(page2);
+        node->children.clear();        
+        node->children.push_back(new_intermediate1.cPage);
+        node->children.push_back(new_intermediate2.cPage);
+        writeNodeToPage(ixfileHandle, node);
+
+        writeNodeToPage(ixfileHandle, &new_intermediate1);
+        writeNodeToPage(ixfileHandle, &new_intermediate2);
+    }
+    return 0;
+}
+
+RC writeNodeToPage(IXFileHandle &ixfileHandle, Node *node){
+    void *page = malloc(PAGE_SIZE);
+    node->serialize(page);
+    ixfileHandle.fileHandle.writePage(node->cPage, page);
+    free(page);
+    return 0;
+}
+
+RC Node::insertKey(int pos, const void* key)
+{
+    #ifdef DEBUG_IX
+    printf("[insertKey]inserting keys, type: %d, pos : %d, total number of keys: %d\n", this->attrType, pos, this->keys.size());
+    #endif
+    if (this->attrType == TypeInt)
+    {
+        // printf("[insertKey] inserting keys int\n");
+        void *data = malloc(attribute->length);
+        memcpy(data, (char *)key, sizeof(attribute->length));
+        
+        if(this->keys.size() >= 1 && pos >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))
+        {
+            free(data);
+            return 0;
+        } 
+        this->keys.insert(this->keys.begin() + pos, data);
+    }
+    else if (this->attrType == TypeReal)
+    {
+        void * data = malloc(attribute->length);
+        memcpy(data, (char *)key, sizeof(attribute->length));
+        if(this->keys.size() >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))         
+        {
+            free(data);
+            return 0;
+        } 
+        this->keys.insert(this->keys.begin() + pos, data);
+    }
+    else if (this->attrType == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)key, sizeof(int));
+        // printf("String length: %d\n", nameLength);
+        void* data = malloc(nameLength + sizeof(int));
+        memcpy(data, &nameLength, sizeof(int));
+        memcpy((char *) data + sizeof(int), (char *)key + sizeof(int), nameLength);
+        if(this->keys.size() >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))  
+        {
+            free(data);
+            return 0;
+        } 
+        this->keys.insert(this->keys.begin() + pos, data);        
+    }
+    return 0;
+}
+
+RC Node::insertPointer(int pos, const RID &rid, const void* key)
+{
+    #ifdef DEBUG_IX
+    printf("[insertPointer] InsertPointer to %d, total keys %d\n", pos, this->keys.size());
+    #endif
+    RID data_rid;
+    int data_rid_pageNum;
+    int data_rid_slotNum;
+    memcpy(&data_rid_pageNum, &rid.pageNum, sizeof(int));
+    memcpy(&data_rid_slotNum, &rid.slotNum, sizeof(int));
+    data_rid.pageNum = data_rid_pageNum;
+    data_rid.slotNum = data_rid_slotNum;
+
+    if(this->keys.size() >= 1 && pos >= 1 && isEqual(this->keys[pos - 1], key, this->attribute)){
+        this->pointers[pos - 1].push_back(data_rid);
+    }
+    else{
+        vector<RID> vector_rid;
+        vector_rid.push_back(data_rid);
+        this->pointers.insert(this->pointers.begin() + pos, vector_rid);
+    }
+#ifdef DEBUG_IX
+    printf("[insertPointer]");
+    this->printKeys();
+    printf(" ");
+    this->printRids();
+#endif
+    return 0;
+}
+
+RC Node::insertChild(int pos, int pageNum)
+{
+    int data;
+    memcpy(&data, (char *)pageNum, sizeof(int));
+    this->children.insert(this->children.begin() + pos, data);
     return 0;
 }
 
@@ -128,6 +423,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
+    // printf("[printBtree] atrribute type %d, length: %d\n", attribute.type, attribute.length);
     printNode(ixfileHandle, attribute, 0);
 }
 
@@ -300,6 +596,12 @@ Node::Node(const Attribute &attribute)
     this->attrType = attribute.type;
 }
 
+Node::Node(const Attribute *attribute)
+{
+    this->attribute = attribute;
+    this->attrType = attribute->type;
+}
+
 
 Node::Node(const Attribute *attribute, const void *page)
 {
@@ -389,6 +691,8 @@ Node::Node(const Attribute *attribute, const void *page)
             this->children.push_back(value);
         }
     }
+    if (this->nodeType == RootOnly || this->nodeType == RootNode)
+        this->cPage = 0;
 }
 
 RC Node::serialize(void * page)
@@ -452,6 +756,9 @@ RC Node::serialize(void * page)
                 offset += sizeof(int);
                 memcpy((char *)page + offset, &slotNum, sizeof(int));
                 offset += sizeof(int);
+#ifdef DEBUG_IX
+                printf("[serialize] Record (%d, %d) %d\n", pageNum, slotNum, offset);
+#endif
             }
         }
     }
@@ -467,24 +774,32 @@ RC Node::serialize(void * page)
             offset += sizeof(int);
         }
     }
+    #ifdef DEBUG_IX
+    printf("[serialize] total number of offset: %d\n", offset);
+    #endif
     return 0;
 }
 
 RC Node::appendKey(const void* key)
 {
-    printf(".....inserting keys, type: %d\n", this->attrType);
+     #ifdef DEBUG_IX
+    printf(".....apending keys, type: %d\n", this->attrType);
+    printf(".....apend keys int, value: %d\n");
+    #endif
     if (this->attrType == TypeInt)
     {
-        printf(".....inserting keys int\n");
+       
         void * data = malloc(attribute->length);
         memcpy(data, (char *)key, sizeof(attribute->length));
         this->keys.push_back(data);
+        // this->printKeys();
+        // printf("\n");
     }
     else if (this->attrType == TypeReal)
     {
         void * data = malloc(attribute->length);
         memcpy(data, (char *)key, sizeof(attribute->length));
-        this->keys.push_back(data);
+        this->keys.push_back(data);        
     }
     else if (this->attrType == TypeVarChar)
     {
@@ -494,8 +809,35 @@ RC Node::appendKey(const void* key)
         void* data = malloc(nameLength + sizeof(int));
         memcpy(data, &nameLength, sizeof(int));
         memcpy((char *) data + sizeof(int), (char *)key + sizeof(int), nameLength);
-        this->keys.push_back(data);
+        this->keys.push_back(data);        
     }
+    return 0;
+}
+
+RC Node::appendChild(int pageNum)
+{
+    int data;
+    memcpy(&data, (char *)pageNum, sizeof(int));
+    this->children.push_back(data);
+    return 0;
+}
+
+RC Node::appendPointer(vector<RID> rids)
+{
+    vector<RID> vector_rid;
+    for(int i=0;i<rids.size();i++)
+    {
+    RID data_rid;
+    int data_rid_pageNum;
+    int data_rid_slotNum;
+    memcpy(&data_rid_pageNum, &rids[i].pageNum, sizeof(int));
+    memcpy(&data_rid_slotNum, &rids[i].slotNum, sizeof(int));
+    data_rid.pageNum = data_rid_pageNum;
+    data_rid.slotNum = data_rid_slotNum;
+
+    vector_rid.push_back(data_rid);
+    }
+    this->pointers.push_back(vector_rid);
     return 0;
 }
 
@@ -609,6 +951,7 @@ bool isLessThan(const Attribute *attribute, const void* compValue, const void* c
         int key;
         memcpy(&value, (char *)compValue, sizeof(attribute->length));
         memcpy(&key, (char *)compKey, sizeof(attribute->length));
+        //printf("[isLessThan] comparing %d, %d", value, key);
         return value < key;
     }
     else if (attribute->type == TypeReal)
@@ -751,4 +1094,42 @@ bool isLargerThan(const Attribute *attribute, const void* compValue, const void*
         free(key_c);
         return value > key;
     }    
+}
+
+bool isEqual(const void* value1, const void* value2, const Attribute *attribute)
+{
+    if (attribute->type == TypeInt)
+    {
+        int cmp_value1;
+        int cmp_value2;
+        memcpy(&cmp_value1, (char *)value1, sizeof(int));
+        memcpy(&cmp_value2, (char *)value2, sizeof(int));
+        return cmp_value1 == cmp_value2;
+    }
+    else if (attribute->type == TypeReal)
+    {
+        float cmp_value1;
+        float cmp_value2;
+        memcpy(&cmp_value1, (char *)value1, sizeof(attribute->length));
+        memcpy(&cmp_value2, (char *)value2, sizeof(attribute->length));
+        return cmp_value1 == cmp_value2;
+    }
+    else if (attribute->type == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)value1, sizeof(int));
+        char* cmp_value1_c = (char *)malloc(nameLength + 1);
+        memcpy(cmp_value1_c, (char *)value1 + sizeof(int), nameLength);
+        cmp_value1_c[nameLength] = '\0';
+        string cmp_value1 = string(cmp_value1_c);
+
+        memcpy(&nameLength, (char *)value2, sizeof(int));
+        char* cmp_value2_c = (char *)malloc(nameLength + 1);
+        memcpy(cmp_value2_c, (char *)value2 + sizeof(int), nameLength);
+        cmp_value2_c[nameLength] = '\0';
+        string cmp_value2 = string(cmp_value2_c);
+        free(cmp_value1_c);
+        free(cmp_value2_c);
+        return cmp_value1 == cmp_value1;
+    }
 }

@@ -5,6 +5,7 @@
 #include <string>
 
 #include "../rbf/rbfm.h"
+#include "../rbf/pfm.h"
 
 # define IX_EOF (-1)  // end of the index scan
 
@@ -14,11 +15,13 @@ bool isLessThan(const Attribute *attribute, const void* compValue, const void* c
 bool isLessAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey);
 bool isLargerThan(const Attribute *attribute, const void* compValue, const void* compKey);
 bool isLargerAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey);
+bool isEqual(const void* value1, const void* value2, const Attribute *attribute);
+
 
 class IX_ScanIterator;
 class IXFileHandle;
 class Node;
-
+RC writeNodeToPage(IXFileHandle &ixfileHandle, Node *node);    
 class IndexManager {
 
     public:
@@ -54,7 +57,9 @@ class IndexManager {
         // Print the B+ tree in pre-order (in a JSON record format)
         void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
         void printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const;
-
+        RC traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node node, vector<Node*> path,const void *key,const Attribute &attribute);
+        RC split(vector<Node*> path, IXFileHandle &ixfileHandle);
+        RC split(vector<Node> path, IXFileHandle &ixfileHandle);
     protected:
         IndexManager();
         ~IndexManager();
@@ -127,17 +132,22 @@ public:
     int next = -1;
     int previous = -1;
     int cPage = -1;
-    int order = 7;
+    int order = 2;
     bool isLoaded = false;
 
     Node(const Attribute *attribute, const void* page);
     Node(const Attribute &attribute);
+    Node(const Attribute *attribute);
     ~Node();
     RC serialize(void *page);
     RC insert(void* key, RID rid);
     RC insert(void* key, int child);
     RC insertKey(int pos, const void* key);
+    RC insertChild(int pos, int pageNum);
+    RC insertPointer(int pos, const RID &rid, const void* key); 
     RC appendKey(const void* key);
+    RC appendChild(int pageNum);
+    RC appendPointer(vector<RID> rids);
     RC printKeys();
     RC printRids();
     int getChildPos(const void* value);
