@@ -22,7 +22,11 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     cerr << endl << "***** In IX Test Case 2 *****" << endl;
 
     RID rid;
-    int key = 200;
+    int key1 = 200;
+    int key2 = 100;
+    int key3 = 400;
+     int key4 = 500;
+      int key5 = 50;
     rid.pageNum = 500;
     rid.slotNum = 20;
 
@@ -48,9 +52,14 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     cerr << endl << "Before Insert - R W A: " << readPageCount << " " <<  writePageCount << " " << appendPageCount << endl;
 
     // insert entry
-    rc = indexManager->insertEntry(ixfileHandle, attribute, &key, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key1, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key2, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key3, rid);
+     rc = indexManager->insertEntry(ixfileHandle, attribute, &key4, rid);
+      rc = indexManager->insertEntry(ixfileHandle, attribute, &key5, rid);
     assert(rc == success && "indexManager::insertEntry() should not fail.");
 
+    indexManager->printBtree(ixfileHandle, attribute);
     // collect counters
     rc = ixfileHandle.collectCounterValues(readPageCountAfter, writePageCountAfter, appendPageCountAfter);
     assert(rc == success && "indexManager::collectCounterValues() should not fail.");
@@ -69,9 +78,11 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
         return fail;
     } 
 
+    // printf("1111\n");
     // print BTree, by this time the BTree should have only one node
     cerr << endl;
     indexManager->printBtree(ixfileHandle, attribute);
+    // printf("2222\n");
 
     // close index file
     rc = indexManager->closeFile(ixfileHandle);

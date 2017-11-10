@@ -51,6 +51,7 @@ RC PagedFileManager::createFile(const string &fileName)
 
     fs.write(data, PAGE_SIZE);
     fs.close();
+    delete data;
     return 0;
 }
 
@@ -96,6 +97,7 @@ RC FileHandle::readCounter()
     memcpy(&this->writePageCounter, (char *)page + sizeof(unsigned), sizeof(unsigned));
     memcpy(&this->appendPageCounter, (char *)page + 2 * sizeof(unsigned), sizeof(unsigned));
     // printf("[readCounter] %d, %d, %d\n", this->readPageCounter, this->writePageCounter, this->appendPageCounter);
+    free(page);
 
     return 0;
 }
@@ -108,6 +110,7 @@ RC FileHandle::writeCounter()
     memcpy((char *)page + 2 * sizeof(unsigned), &this->appendPageCounter, sizeof(unsigned));
     fs.seekg(0);
     fs.write((char *)page, PAGE_SIZE);
+    free(page);
     return 0;
 }
 
