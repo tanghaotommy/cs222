@@ -22,7 +22,12 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     cerr << endl << "***** In IX Test Case 2 *****" << endl;
 
     RID rid;
-    int key = 200;
+    int key1 = 200;		 
+    int key2 = 100;		
+    int key3 = 150;		
+    int key4 = 500;		
+    int key5 = 50;
+
     rid.pageNum = 500;
     rid.slotNum = 20;
 
@@ -48,7 +53,12 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
     cerr << endl << "Before Insert - R W A: " << readPageCount << " " <<  writePageCount << " " << appendPageCount << endl;
 
     // insert entry
-    rc = indexManager->insertEntry(ixfileHandle, attribute, &key, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key1, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key2, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key3, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key4, rid);
+    rc = indexManager->insertEntry(ixfileHandle, attribute, &key5, rid);
+
     assert(rc == success && "indexManager::insertEntry() should not fail.");
 
     // collect counters

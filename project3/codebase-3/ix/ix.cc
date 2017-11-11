@@ -100,8 +100,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         {
             vector<Node*> path;
             this->traverseToLeafWithPath(ixfileHandle, root, path, key, attribute);
+            cout<<"[PathSize]"<<path.size()<<endl;
             Node *leaf = path[path.size() - 1];
-
             int pos = leaf->getChildPos(key);
             leaf->insertKey(pos, key); //Insert into vector.
             leaf->insertPointer(pos, rid, key); //Insert into vector.
@@ -123,8 +123,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
 RC IndexManager::traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node root, vector<Node*> path, const void *key, const Attribute &attribute)
 {
-    
     path.push_back(&root);
+    cout<<"[TraverseToLeafWithPath] "<<path.size()<<endl;
     if(root.nodeType == LeafNode) return 0;
     int pos = root.getChildPos(key);            
     void *page = malloc(PAGE_SIZE);     
@@ -138,12 +138,7 @@ RC IndexManager::traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node root, v
 
 RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
 {
-
-}
-
-RC IndexManager::split(vector<Node> path, IXFileHandle &ixfileHandle)
-{
-    Node *node = &path[path.size() - 1];    
+    Node *node = path[path.size() - 1];    
     if(node->nodeType == LeafNode)
     {
         int order = node->order; 
@@ -167,7 +162,7 @@ RC IndexManager::split(vector<Node> path, IXFileHandle &ixfileHandle)
         new_leaf.previous = node->cPage;
         writeNodeToPage(ixfileHandle, &new_leaf);
         path.pop_back();
-        Node *parent = &path[path.size() - 1];
+        Node *parent = path[path.size() - 1];
 
         int pos = parent->getChildPos(new_leaf.keys[0]);
         parent->insertKey(pos, new_leaf.keys[0]); 
@@ -185,7 +180,7 @@ RC IndexManager::split(vector<Node> path, IXFileHandle &ixfileHandle)
         int order = node->order;  
         Node new_intermediate(node->attribute);
         path.pop_back();
-        Node *parent = &path[path.size() - 1];
+        Node *parent = path[path.size() - 1];
 
         new_intermediate.nodeType = node->nodeType;
 
@@ -424,7 +419,10 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
     // printf("[printBtree] atrribute type %d, length: %d\n", attribute.type, attribute.length);
-    printNode(ixfileHandle, attribute, 0);
+    int numOfPages = ixfileHandle.fileHandle.getNumberOfPages();
+    cout<<"[print Btree]"<<"Pages"<<numOfPages<<endl;
+    for(int i=0;i<numOfPages;i++)
+        printNode(ixfileHandle, attribute, i);
 }
 
 void IndexManager::printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const
@@ -736,7 +734,7 @@ RC Node::serialize(void * page)
     {
         int nRids = this->pointers.size();
 #ifdef DEBUG_IX
-        printf("[serialize] nPointers %d, offset: %d\n", pointers.size(), offset);
+       // printf("[serialize] nPointers %d, offset: %d\n", pointers.size(), offset);
 #endif
         memcpy((char *)page + offset, &nRids, sizeof(int));
         offset += sizeof(int);
@@ -746,7 +744,7 @@ RC Node::serialize(void * page)
             memcpy((char *)page + offset, &nRecords, sizeof(int));
             offset += sizeof(int);
 #ifdef DEBUG_IX
-            printf("[serialize] nRecords %d, offset: %d\n", pointers[i].size(), offset - sizeof(int));
+          //  printf("[serialize] nRecords %d, offset: %d\n", pointers[i].size(), offset - sizeof(int));
 #endif
             for (int j = 0; j < nRecords; ++j)
             {
@@ -757,7 +755,7 @@ RC Node::serialize(void * page)
                 memcpy((char *)page + offset, &slotNum, sizeof(int));
                 offset += sizeof(int);
 #ifdef DEBUG_IX
-                printf("[serialize] Record (%d, %d) %d\n", pageNum, slotNum, offset);
+        //        printf("[serialize] Record (%d, %d) %d\n", pageNum, slotNum, offset);
 #endif
             }
         }
@@ -774,9 +772,7 @@ RC Node::serialize(void * page)
             offset += sizeof(int);
         }
     }
-    #ifdef DEBUG_IX
-    printf("[serialize] total number of offset: %d\n", offset);
-    #endif
+
     return 0;
 }
 
