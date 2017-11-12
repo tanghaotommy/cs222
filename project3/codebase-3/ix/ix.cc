@@ -45,6 +45,7 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
+    cout<<"[insertEntry]"<<endl;
     cout<<"-------before insert--------"<<endl;
     this-> printBtree(ixfileHandle,attribute);
     if (ixfileHandle.fileHandle.getNumberOfPages() == 0)
@@ -119,7 +120,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             }
         }
     }
-        cout<<"-------after insert--------"<<endl;
+        cout<<"--------After insert--------"<<endl;
     this-> printBtree(ixfileHandle,attribute);
     //this->printBtree(ixfileHandle, attribute); 
     return 0;
@@ -404,38 +405,75 @@ RC Node::insertChild(int pos, int pageNum)
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-    
     void *page = malloc(PAGE_SIZE);
-    int pageNum = 0;  //need to finde the page
-    ixfileHandle.fileHandle.readPage(pageNum, page);
-    Node node(&attribute, page);
-    int pos = node.getKeyPosition(key);
-    if(pos == -1) return -1;
-    if(node.pointers[pos].size() > 1){
-        for(int i=0;i<node.pointers[pos].size();i++)
-        {
-            if(node.pointers[pos][i].pageNum == rid.pageNum && node.pointers[pos][i].slotNum == rid.slotNum)
-            {
-                node.pointers[pos].erase(node.pointers[pos].begin() + i, node.pointers[pos].begin() + i + 1);
+    cout<<"[DeleteEntry]"<<endl;
+    cout<<"-----------Before delete--------------"<<endl;
+    printBtree(ixfileHandle, attribute);
+    ixfileHandle.fileHandle.readPage(0, page); //attribtue!!!!!!!!!!!!! what is attribute, obviously every node attribute is different, so 
+    //need to modify it in the insert and delete.
+     Node *node = new Node(&attribute, page);
+     node = traverseToLeafNode(ixfileHandle, node, attribute);
+     bool flag = false;
+     while(true)
+     {
+         for(int i=0;i<node->keys.size();i++)
+         {
+             if(isEqual(key, node->keys[i], &attribute))
+             {
+                if(node->pointers[i].size() > 1){
+                    for(int j=0;j<node->pointers[i].size();i++)
+                    {
+                        if(node->pointers[i][j].pageNum == rid.pageNum && node->pointers[i][j].slotNum == rid.slotNum)
+                        {
+                            node->pointers[i].erase(node->pointers[i].begin() + j, node->pointers[i].begin() + j + 1);
+                            break;
+                        }
+                        else return -1;
+                    }
+                }
+                else
+                {
+                    node->pointers.erase(node->pointers.begin() + i, node->pointers.begin() + i + 1);
+                    node->keys.erase(node->keys.begin() + i, node->keys.begin() + i + 1);
+                }
+                flag = true;
                 break;
             }
-            else return -1;
         }
+        if(flag) break;
+        int nextPageNum = node->next;
+        void *page = malloc(PAGE_SIZE);
+        ixfileHandle.fileHandle.readPage(node->next, page);
+        node = new Node(&attribute, page);
+        node->cPage = nextPageNum;
+        free(page);
+        if(node->cPage == -1) return -1;
     }
-    else
-    {
-        node.pointers.erase(node.pointers.begin() + pos, node.pointers.begin() + pos + 1);
-        node.keys.erase(node.keys.begin() + pos, node.keys.begin() + pos + 1);
-    }
-    if(node.keys.size() < node.order)
+    if(node->keys.size() < node->order)
     {
         //merge
     }
     else{
-        writeNodeToPage(ixfileHandle, &node);
+        writeNodeToPage(ixfileHandle, node);
     }
-    
+
+    cout<<"-----------After delete--------------"<<endl;
+    printBtree(ixfileHandle, attribute);
     return 0;
+}
+
+Node *IndexManager::traverseToLeafNode(IXFileHandle &ixfileHandle, Node *node, const Attribute &attribute) // attribute!!!!!!!!
+{
+    while (node->nodeType != RootOnly && node->nodeType != LeafNode)
+    {
+        void *page = malloc(PAGE_SIZE);
+        int pageNum = node->children[0];
+        ixfileHandle.fileHandle.readPage(node->children[0], page);
+        node = new Node(&attribute, page); 
+        node->cPage = pageNum;
+        free(page);
+    }
+    return node;
 }
 
 int Node::getKeyPosition(const void *key)
@@ -467,7 +505,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const {
     // printf("[printBtree] atrribute type %d, length: %d\n", attribute.type, attribute.length);
     int numOfPages = ixfileHandle.fileHandle.getNumberOfPages();
-    cout<<"[print Btree]"<<"Pages"<<numOfPages<<endl;
+    if(numOfPages < 1) return;
         printNode(ixfileHandle, attribute, 0);
 }
 

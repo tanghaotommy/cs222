@@ -9,6 +9,7 @@
         "xlocale": "cpp",
         "initializer_list": "cpp",
         "type_traits": "cpp",
-        "iostream": "cpp"
+        "iostream": "cpp",
+        "fstream": "cpp"
     }
 }

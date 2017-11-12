@@ -38,7 +38,6 @@ int testCase_4(const string &indexFileName, const Attribute &attribute)
     IXFileHandle ixfileHandle;
     RC rc = indexManager->openFile(indexFileName, ixfileHandle);
     assert(rc == success && "indexManager::openFile() should not fail.");
-
     // collect counters
     rc = ixfileHandle.collectCounterValues(readPageCount, writePageCount, appendPageCount);
     assert(rc == success && "indexManager::collectCounterValues() should not fail.");

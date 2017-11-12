@@ -58,6 +58,7 @@ class IndexManager {
         void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
         void printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const;
         RC traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node *node, vector<Node*> &path,const void *key,const Attribute &attribute);
+        Node *traverseToLeafNode(IXFileHandle &ixfileHandle, Node *node, const Attribute &attribute);
         RC split(vector<Node*> path, IXFileHandle &ixfileHandle);
     protected:
         IndexManager();
