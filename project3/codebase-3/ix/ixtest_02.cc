@@ -54,11 +54,12 @@ int testCase_2(const string &indexFileName, const Attribute &attribute)
 
     // insert entry
     rc = indexManager->insertEntry(ixfileHandle, attribute, &key1, rid);
+    /*
     rc = indexManager->insertEntry(ixfileHandle, attribute, &key2, rid);
     rc = indexManager->insertEntry(ixfileHandle, attribute, &key3, rid);
     rc = indexManager->insertEntry(ixfileHandle, attribute, &key4, rid);
     rc = indexManager->insertEntry(ixfileHandle, attribute, &key5, rid);
-
+*/
     assert(rc == success && "indexManager::insertEntry() should not fail.");
 
     // collect counters

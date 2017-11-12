@@ -45,8 +45,10 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
+     #ifdef DEBUG_IX
     cout<<"[insertEntry]"<<endl;
     cout<<"-------before insert--------"<<endl;
+    #endif
     this-> printBtree(ixfileHandle,attribute);
     if (ixfileHandle.fileHandle.getNumberOfPages() == 0)
     {
@@ -82,15 +84,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             path.push_back(&root);
             if (root.pointers.size() > 2*root.order)
             {
-                #ifdef DEBUG_IX
-                printf("[insertEntry] RootOnly split\n");
-                #endif
                 split(path, ixfileHandle);                            
             } else
             {   
-                #ifdef DEBUG_IX
-                printf("[insertEntry] RootOnly write to %d page\n", root.cPage);
-                #endif
                 realloc(page, PAGE_SIZE);
                 root.serialize(page);
                 int rc = ixfileHandle.fileHandle.writePage(root.cPage, page);
@@ -120,8 +116,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             }
         }
     }
-        cout<<"--------After insert--------"<<endl;
+    #ifdef DEBUG_IX
+    cout<<"--------After insert--------"<<endl;
     this-> printBtree(ixfileHandle,attribute);
+    #endif
     //this->printBtree(ixfileHandle, attribute); 
     return 0;
 }
@@ -449,6 +447,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         free(page);
         if(node->cPage == -1) return -1;
     }
+    /*
     if(node->keys.size() < node->order)
     {
         //merge
@@ -456,6 +455,8 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     else{
         writeNodeToPage(ixfileHandle, node);
     }
+*/
+    writeNodeToPage(ixfileHandle, node);
 
     cout<<"-----------After delete--------------"<<endl;
     printBtree(ixfileHandle, attribute);
@@ -897,7 +898,7 @@ RC Node::appendKey(const void* key)
 RC Node::appendChild(int pageNum)
 {
     int data;
-    memcpy(&data, (char *)pageNum, sizeof(int));
+    memcpy(&data, &pageNum, sizeof(int));
     this->children.push_back(data);
     return 0;
 }
