@@ -57,9 +57,8 @@ class IndexManager {
         // Print the B+ tree in pre-order (in a JSON record format)
         void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
         void printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const;
-        RC traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node node, vector<Node*> path,const void *key,const Attribute &attribute);
+        RC traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node *node, vector<Node*> &path,const void *key,const Attribute &attribute);
         RC split(vector<Node*> path, IXFileHandle &ixfileHandle);
-        RC split(vector<Node> path, IXFileHandle &ixfileHandle);
     protected:
         IndexManager();
         ~IndexManager();
@@ -151,6 +150,7 @@ public:
     RC printKeys();
     RC printRids();
     int getChildPos(const void* value);
+    int getKeyPosition(const void *key);
     // bool isLessThan(const void* compValue, const void* compKey);
 };
 

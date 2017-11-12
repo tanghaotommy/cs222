@@ -45,6 +45,8 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
+    cout<<"-------before insert--------"<<endl;
+    this-> printBtree(ixfileHandle,attribute);
     if (ixfileHandle.fileHandle.getNumberOfPages() == 0)
     {
         Node root = Node(attribute);
@@ -63,7 +65,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     } 
     else
     {
-        //this-> printBtree(ixfileHandle,attribute);
+        
         void *page = malloc(PAGE_SIZE);
         ixfileHandle.fileHandle.readPage(0, page);
         Node root = Node(&attribute, page);
@@ -72,7 +74,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         {
             
             int pos = root.getChildPos(key);
-             
+            //printNode(ixfileHandle, attribute, 0);
             root.insertKey(pos, key); //Insert into vector.
             root.insertPointer(pos, rid, key); //Insert into vector.
             vector<Node*> path;
@@ -99,38 +101,41 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         else
         {
             vector<Node*> path;
-            this->traverseToLeafWithPath(ixfileHandle, root, path, key, attribute);
-            cout<<"[PathSize]"<<path.size()<<endl;
-            Node *leaf = path[path.size() - 1];
-            int pos = leaf->getChildPos(key);
-            leaf->insertKey(pos, key); //Insert into vector.
-            leaf->insertPointer(pos, rid, key); //Insert into vector.
-            if (leaf->keys.size() > 2*leaf->order)
+            traverseToLeafWithPath(ixfileHandle, &root, path, key, attribute);
+            
+            int pos = path[path.size() - 1]->getChildPos(key);
+            path[path.size() - 1]->insertKey(pos, key); //Insert into vector.
+            path[path.size() - 1]->insertPointer(pos, rid, key); //Insert into vector.
+            if (path[path.size() - 1]->keys.size() > 2*path[path.size() - 1]->order)
             {
+                cout<<"[Split]"<<endl;
                 split(path, ixfileHandle);                            
             }
             else {
                 void *page = malloc(PAGE_SIZE);
-                leaf->serialize(page);
-                ixfileHandle.fileHandle.writePage(leaf->cPage, page);
+                path[path.size() - 1]->serialize(page);
+                ixfileHandle.fileHandle.writePage(path[path.size() - 1]->cPage, page);
                 free(page);
             }
         }
     }
+        cout<<"-------after insert--------"<<endl;
+    this-> printBtree(ixfileHandle,attribute);
     //this->printBtree(ixfileHandle, attribute); 
     return 0;
 }
 
-RC IndexManager::traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node root, vector<Node*> path, const void *key, const Attribute &attribute)
+RC IndexManager::traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node *root, vector<Node*> &path, const void *key, const Attribute &attribute)
 {
-    path.push_back(&root);
-    cout<<"[TraverseToLeafWithPath] "<<path.size()<<endl;
-    if(root.nodeType == LeafNode) return 0;
-    int pos = root.getChildPos(key);            
+    path.push_back(root);
+    //path.push_back(&root);
+    //cout<<"[TraverseToLeafWithPath] "<<path.size()<<endl;
+    if(root->nodeType == LeafNode) return 0;
+    int pos = root->getChildPos(key);            
     void *page = malloc(PAGE_SIZE);     
-    ixfileHandle.fileHandle.readPage(root.children[pos], page);
-    Node node(&attribute, page);   
-    node.cPage = root.children[pos];
+    ixfileHandle.fileHandle.readPage(root->children[pos], page);
+    Node *node = new Node(&attribute, page);   
+    node->cPage = root->children[pos];
     free(page);   
     traverseToLeafWithPath(ixfileHandle, node, path, key, attribute);                
     return 0;
@@ -319,8 +324,11 @@ RC Node::insertKey(int pos, const void* key)
         // printf("[insertKey] inserting keys int\n");
         void *data = malloc(attribute->length);
         memcpy(data, (char *)key, sizeof(attribute->length));
-        
-        if(this->keys.size() >= 1 && pos >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))
+        int d;
+        memcpy(&d, (char *)key, sizeof(attribute->length));
+        if(pos>=1)
+            bool x = isEqual(this->keys[pos - 1], data, this->attribute);
+        if(this->keys.size() >= 1  && pos >= 1 && pos >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))
         {
             free(data);
             return 0;
@@ -331,7 +339,7 @@ RC Node::insertKey(int pos, const void* key)
     {
         void * data = malloc(attribute->length);
         memcpy(data, (char *)key, sizeof(attribute->length));
-        if(this->keys.size() >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))         
+        if(this->keys.size() >= 1  && pos >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))         
         {
             free(data);
             return 0;
@@ -346,7 +354,7 @@ RC Node::insertKey(int pos, const void* key)
         void* data = malloc(nameLength + sizeof(int));
         memcpy(data, &nameLength, sizeof(int));
         memcpy((char *) data + sizeof(int), (char *)key + sizeof(int), nameLength);
-        if(this->keys.size() >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))  
+        if(this->keys.size() >= 1  && pos >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))  
         {
             free(data);
             return 0;
@@ -389,16 +397,55 @@ RC Node::insertPointer(int pos, const RID &rid, const void* key)
 RC Node::insertChild(int pos, int pageNum)
 {
     int data;
-    memcpy(&data, (char *)pageNum, sizeof(int));
+    memcpy(&data,&pageNum, sizeof(int));
     this->children.insert(this->children.begin() + pos, data);
     return 0;
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-    return -1;
+    
+    void *page = malloc(PAGE_SIZE);
+    int pageNum = 0;  //need to finde the page
+    ixfileHandle.fileHandle.readPage(pageNum, page);
+    Node node(&attribute, page);
+    int pos = node.getKeyPosition(key);
+    if(pos == -1) return -1;
+    if(node.pointers[pos].size() > 1){
+        for(int i=0;i<node.pointers[pos].size();i++)
+        {
+            if(node.pointers[pos][i].pageNum == rid.pageNum && node.pointers[pos][i].slotNum == rid.slotNum)
+            {
+                node.pointers[pos].erase(node.pointers[pos].begin() + i, node.pointers[pos].begin() + i + 1);
+                break;
+            }
+            else return -1;
+        }
+    }
+    else
+    {
+        node.pointers.erase(node.pointers.begin() + pos, node.pointers.begin() + pos + 1);
+        node.keys.erase(node.keys.begin() + pos, node.keys.begin() + pos + 1);
+    }
+    if(node.keys.size() < node.order)
+    {
+        //merge
+    }
+    else{
+        writeNodeToPage(ixfileHandle, &node);
+    }
+    
+    return 0;
 }
 
+int Node::getKeyPosition(const void *key)
+{
+    for(int i=0;i<this->keys.size();i++)
+    {
+        if(isEqual(key, this->keys[i],this->attribute)) return i;
+    }
+    return -1;
+}
 
 RC IndexManager::scan(IXFileHandle &ixfileHandle,
         const Attribute &attribute,
@@ -421,8 +468,7 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
     // printf("[printBtree] atrribute type %d, length: %d\n", attribute.type, attribute.length);
     int numOfPages = ixfileHandle.fileHandle.getNumberOfPages();
     cout<<"[print Btree]"<<"Pages"<<numOfPages<<endl;
-    for(int i=0;i<numOfPages;i++)
-        printNode(ixfileHandle, attribute, i);
+        printNode(ixfileHandle, attribute, 0);
 }
 
 void IndexManager::printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const
