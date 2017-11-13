@@ -45,11 +45,11 @@ RC IndexManager::closeFile(IXFileHandle &ixfileHandle)
 
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *key, const RID &rid)
 {
-     #ifdef DEBUG_IX
+#ifdef DEBUG_IX
     cout<<"[insertEntry]"<<endl;
     cout<<"-------before insert--------"<<endl;
-    #endif
     this-> printBtree(ixfileHandle,attribute);
+#endif
     if (ixfileHandle.fileHandle.getNumberOfPages() == 0)
     {
         Node root = Node(attribute);
@@ -105,7 +105,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             path[path.size() - 1]->insertPointer(pos, rid, key); //Insert into vector.
             if (path[path.size() - 1]->keys.size() > 2*path[path.size() - 1]->order)
             {
-                cout<<"[Split]"<<endl;
+                // cout<<"[Split]"<<endl;
                 split(path, ixfileHandle);                            
             }
             else {
@@ -116,10 +116,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             }
         }
     }
-    #ifdef DEBUG_IX
+#ifdef DEBUG_IX
     cout<<"--------After insert--------"<<endl;
     this-> printBtree(ixfileHandle,attribute);
-    #endif
+#endif
     //this->printBtree(ixfileHandle, attribute); 
     return 0;
 }
@@ -554,19 +554,30 @@ IX_ScanIterator::~IX_ScanIterator()
 
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-    if (!this->cPage < this->ixfileHandle->fileHandle.getNumberOfPages())
+    if (!(this->cPage < this->ixfileHandle->fileHandle.getNumberOfPages()))
         return 1;
     void *page = malloc(PAGE_SIZE);
     this->ixfileHandle->fileHandle.readPage(this->cPage, page);
     Node *node = new Node(this->attribute, page);
     // node->printRids();
     // printf("\n");
+#ifdef DEBUG_IX
+    printf("[getNextEntry] Total number of pages in file %d\n", this->ixfileHandle->fileHandle.getNumberOfPages());
+#endif
 
     if (node->nodeType != RootOnly && node->nodeType != LeafNode)
     {
-        traverseToLeaf(node);
-        this->cPage = node->cPage;
+        int cPage = traverseToLeaf(node);
+        this->cPage = cPage;
     }
+
+#ifdef DEBUG_IX
+    int total = this->ixfileHandle->fileHandle.getNumberOfPages();
+    printf("[getNextEntry] Finished traversing to leaf\n");
+    node->printKeys();
+    printf("\n");
+#endif
+
     while(1)
     {
         this->cRec++;
@@ -579,6 +590,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         {
             void *page = malloc(PAGE_SIZE);
             this->ixfileHandle->fileHandle.readPage(node->next, page);
+            this->cPage = node->next;
             node = new Node(this->attribute, page);
             this->cRec = 0;
             this->cKey = 0;
@@ -630,17 +642,32 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     return 0;
 }
 
-RC IX_ScanIterator::traverseToLeaf(Node *node)
+int IX_ScanIterator::traverseToLeaf(Node *&node)
 {
+    int cPage = 0;
     while (node->nodeType != RootOnly && node->nodeType != LeafNode)
     {
-        int pos = node->getChildPos(this->lowKey);
+        int pos;
+        if (this->lowKey == NULL)
+            pos = 0;
+        else        
+            pos = node->getChildPos(this->lowKey);
+#ifdef DEBUG_IX
+        printf("[traverseToLeaf] Current page number %d, next pageNum: %d\n", node->cPage, node->children[pos]);
+#endif
+        cPage = node->children[pos];
+        // node->printKeys();
         void *page = malloc(PAGE_SIZE);
         this->ixfileHandle->fileHandle.readPage(node->children[pos], page);
         node = new Node(this->attribute, page);
+#ifdef DEBUG_IX
+        node->printKeys();
+        printf("\npos: %d\n", pos);
+#endif
         free(page);
     }
-    return 0;
+    // node->printKeys();
+    return cPage;
 }
 
 RC IX_ScanIterator::close()
@@ -738,7 +765,7 @@ Node::Node(const Attribute *attribute, const void *page)
         memcpy(&nRids, (char *)page + offset, sizeof(int));
         offset += sizeof(int);
 #ifdef DEBUG_IX
-        printf("[Node] nRids: %d, offset: %d\n", nRids, offset - sizeof(int));
+        // printf("[Node] nRids: %d, offset: %d\n", nRids, offset - sizeof(int));
 #endif
         for (int i = 0; i < nRids; ++i)
         {
@@ -746,7 +773,7 @@ Node::Node(const Attribute *attribute, const void *page)
             memcpy(&nRecords, (char *)page + offset, sizeof(int));
             offset += sizeof(int);
 #ifdef DEBUG_IX
-            printf("[Node] nRecords %d, offset: %d\n", nRecords, offset - sizeof(int));
+            // printf("[Node] nRecords %d, offset: %d\n", nRecords, offset - sizeof(int));
 #endif
             vector <RID> records;
             for (int j = 0; j < nRecords; ++j)
@@ -938,13 +965,13 @@ RC Node::printKeys()
         {
             int value;
             memcpy(&value, (char *)this->keys[i], sizeof(attribute->length));
-            printf("%d", value);
+            printf("\"%d\"", value);
         }
         else if (this->attrType == TypeReal)
         {
             float value;
             memcpy(&value, (char *)this->keys[i], sizeof(attribute->length));
-            printf("%f", value);
+            printf("\"%f\"", value);
         }
         else if (this->attrType == TypeVarChar)
         {
@@ -969,6 +996,7 @@ RC Node::printRids()
     printf("\"keys\":[");
     for (int i = 0; i < this->keys.size(); ++i)
     {
+        printf("\"");
         if (this->attrType == TypeInt)
         {
             int value;
@@ -1000,10 +1028,10 @@ RC Node::printRids()
         for (int j = 0; j < this->pointers[i].size(); ++j)
         {
             printf("(%d, %d)", this->pointers[i][j].pageNum, this->pointers[i][j].slotNum);
-            if (i != this->keys.size() - 1)
+            if (j != this->pointers[i].size() - 1)
                 printf(",");
         }
-        printf("]");
+        printf("]\"");
         if (this->attrType == TypeVarChar)
             printf("\"");
         if (i != this->keys.size() - 1)

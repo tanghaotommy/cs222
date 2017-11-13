@@ -83,7 +83,7 @@ class IX_ScanIterator {
 
         // Terminate index scan
         RC close();
-        RC traverseToLeaf(Node *node);
+        int traverseToLeaf(Node *&node);
 
         IXFileHandle *ixfileHandle;
         const Attribute *attribute;
