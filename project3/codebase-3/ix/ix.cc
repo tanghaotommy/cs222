@@ -315,9 +315,9 @@ RC writeNodeToPage(IXFileHandle &ixfileHandle, Node *node){
 
 RC Node::insertKey(int pos, const void* key)
 {
-    #ifdef DEBUG_IX
+#ifdef DEBUG_IX
     printf("[insertKey]inserting keys, type: %d, pos : %d, total number of keys: %d\n", this->attrType, pos, this->keys.size());
-    #endif
+#endif
     if (this->attrType == TypeInt)
     {
         // printf("[insertKey] inserting keys int\n");
@@ -353,21 +353,26 @@ RC Node::insertKey(int pos, const void* key)
         void* data = malloc(nameLength + sizeof(int));
         memcpy(data, &nameLength, sizeof(int));
         memcpy((char *) data + sizeof(int), (char *)key + sizeof(int), nameLength);
+#ifdef DEBUG_IX
+        printf("[insertKey]Length of the key: %d\n", nameLength);
+#endif
         if(this->keys.size() >= 1  && pos >= 1 && isEqual(this->keys[pos - 1], data, this->attribute))  
         {
             free(data);
             return 0;
         } 
-        this->keys.insert(this->keys.begin() + pos, data);        
+        this->keys.insert(this->keys.begin() + pos, data);    
+        this->printKeys();
+        printf("\n");    
     }
     return 0;
 }
 
 RC Node::insertPointer(int pos, const RID &rid, const void* key)
 {
-    #ifdef DEBUG_IX
+#ifdef DEBUG_IX
     printf("[insertPointer] InsertPointer to %d, total keys %d\n", pos, this->keys.size());
-    #endif
+#endif
     RID data_rid;
     int data_rid_pageNum;
     int data_rid_slotNum;
@@ -977,7 +982,9 @@ RC Node::printKeys()
         {
             int nameLength;
             memcpy(&nameLength, (char *)this->keys[i], sizeof(int));
-            // printf("String length: %d\n", nameLength);
+#ifdef DEBUG_IX
+            printf("[printKeys] String length: %d\n", nameLength);
+#endif
             char* value_c = (char *)malloc(nameLength + 1);
             memcpy(value_c, (char *)this->keys[i] + sizeof(int), nameLength);
             value_c[nameLength] = '\0';
@@ -1237,8 +1244,12 @@ bool isEqual(const void* value1, const void* value2, const Attribute *attribute)
         memcpy(cmp_value2_c, (char *)value2 + sizeof(int), nameLength);
         cmp_value2_c[nameLength] = '\0';
         string cmp_value2 = string(cmp_value2_c);
+#ifdef DEBUG_IX
+        printf("[isEqual] Comparing %s, %s\n", cmp_value1.c_str(), cmp_value2.c_str());
+        printf("[isEqual] %d\n", cmp_value1 == cmp_value1);
+#endif
         free(cmp_value1_c);
         free(cmp_value2_c);
-        return cmp_value1 == cmp_value1;
+        return cmp_value1 == cmp_value2;
     }
 }
