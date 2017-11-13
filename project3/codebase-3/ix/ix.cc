@@ -202,7 +202,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         new_intermediate.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
         free(page);
         int pos = parent->getChildPos(node->keys[order]);
-        parent->insertKey(pos, node->keys[0]); 
+        parent->insertKey(pos, node->keys[order]); 
 
         parent->insertChild(pos + 1, new_intermediate.cPage);  //TODO Always pos + 1? what if it's first child?
 
