@@ -579,50 +579,53 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
     if (!(this->cPage < this->ixfileHandle->fileHandle.getNumberOfPages()))
         return 1;
-    void *page = malloc(PAGE_SIZE);
-    this->ixfileHandle->fileHandle.readPage(this->cPage, page);
-    Node *node = new Node(this->attribute, page);
+    if (this->node == NULL)
+    {
+        void *page = malloc(PAGE_SIZE);
+        this->ixfileHandle->fileHandle.readPage(this->cPage, page);
+        this->node = new Node(this->attribute, page);
+        free(page);
+    }
     // node->printRids();
     // printf("\n");
 #ifdef DEBUG_IX
     printf("[getNextEntry] Total number of pages in file %d\n", this->ixfileHandle->fileHandle.getNumberOfPages());
 #endif
 
-    if (node->nodeType != RootOnly && node->nodeType != LeafNode)
+    if (this->node->nodeType != RootOnly && this->node->nodeType != LeafNode)
     {
-        int cPage = traverseToLeaf(node);
+        int cPage = traverseToLeaf(this->node);
         this->cPage = cPage;
     }
 
 #ifdef DEBUG_IX
     int total = this->ixfileHandle->fileHandle.getNumberOfPages();
     printf("[getNextEntry] Finished traversing to leaf\n");
-    node->printKeys();
+    this->node->printKeys();
     printf("\n");
 #endif
 
     while(1)
     {
         this->cRec++;
-        if (this->cRec >= node->pointers[this->cKey].size())
+        if (this->cRec >= this->node->pointers[this->cKey].size())
         {
             this->cRec = 0;
             this->cKey++;
         }
-        if (this->cKey >= node->pointers.size() && node->next != -1)
+        if (this->cKey >= this->node->pointers.size() && this->node->next != -1)
         {
             void *page = malloc(PAGE_SIZE);
-            this->ixfileHandle->fileHandle.readPage(node->next, page);
-            this->cPage = node->next;
-            node = new Node(this->attribute, page);
+            this->ixfileHandle->fileHandle.readPage(this->node->next, page);
+            this->cPage = this->node->next;
+            this->node = new Node(this->attribute, page);
             this->cRec = 0;
             this->cKey = 0;
+            free(page);
         }
 
-        if (this->cKey >= node->keys.size() && node->next == -1)
+        if (this->cKey >= this->node->keys.size() && this->node->next == -1)
         {
-            delete node;
-            free(page);
             return IX_EOF;
         }
 #ifdef DEBUG_IX
@@ -643,25 +646,21 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             if (!((this->highKeyInclusive && isLessAndEqualThan(this->attribute, node->keys[this->cKey], this->highKey)) || 
                 (!this->highKeyInclusive && isLessThan(this->attribute, node->keys[this->cKey], this->highKey))))
             {
-                delete node;
-                free(page);
                 return IX_EOF;        
             }
-        rid.pageNum = node->pointers[this->cKey][this->cRec].pageNum;
-        rid.slotNum = node->pointers[this->cKey][this->cRec].slotNum;
+        rid.pageNum = this->node->pointers[this->cKey][this->cRec].pageNum;
+        rid.slotNum = this->node->pointers[this->cKey][this->cRec].slotNum;
         if (this->attribute->type == TypeInt || this->attribute->type == TypeReal)
-            memcpy(key, node->keys[this->cKey], this->attribute->length);
+            memcpy(key, this->node->keys[this->cKey], this->attribute->length);
         else
         {
             int nameLength;
-            memcpy(&nameLength, (char *)node->keys[this->cKey], sizeof(int));
+            memcpy(&nameLength, (char *)this->node->keys[this->cKey], sizeof(int));
             memcpy(key, &nameLength, sizeof(int));
-            memcpy((char *)key + sizeof(int), (char *)node->keys[this->cKey] + sizeof(int), nameLength);
+            memcpy((char *)key + sizeof(int), (char *)this->node->keys[this->cKey] + sizeof(int), nameLength);
         }
         break;
     }
-    delete node;
-    free(page);
     return 0;
 }
 
@@ -698,6 +697,12 @@ RC IX_ScanIterator::close()
     this->cPage = 0;
     this->cKey = 0;
     this->cRec = -1;
+
+    if (this->node != NULL)
+    {
+        delete this->node;
+        this->node = NULL;
+    }
     return 0;
 }
 
