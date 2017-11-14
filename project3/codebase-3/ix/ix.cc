@@ -162,9 +162,9 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         new_leaf.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
         free(page);
         node->next = new_leaf.cPage;
-        writeNodeToPage(ixfileHandle, node);
+        node->writeNodeToPage(ixfileHandle);
         new_leaf.previous = node->cPage;
-        writeNodeToPage(ixfileHandle, &new_leaf);
+        new_leaf.writeNodeToPage(ixfileHandle);
         path.pop_back();
         Node *parent = path[path.size() - 1];
 
@@ -177,7 +177,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         {
             split(path, ixfileHandle);            
         }
-        else writeNodeToPage(ixfileHandle, parent);
+        else parent->writeNodeToPage(ixfileHandle);
     }
     else if(node->nodeType == InternalNode)
     {
@@ -206,16 +206,16 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
 
         parent->insertChild(pos + 1, new_intermediate.cPage);  //TODO Always pos + 1? what if it's first child?
 
-        writeNodeToPage(ixfileHandle, &new_intermediate);
+        new_intermediate.writeNodeToPage(ixfileHandle);
         node->keys.erase(node->keys.begin() + order,node->keys.begin() + node->keys.size());
         node->children.erase(node->children.begin() + order + 1,node->children.begin() + node->children.size());
-        writeNodeToPage(ixfileHandle, node);
+        node->writeNodeToPage(ixfileHandle);
         
         if(parent->keys.size() > 2 * parent->order)
         {
             split(path, ixfileHandle);            
         }
-        else writeNodeToPage(ixfileHandle, parent);
+        else parent->writeNodeToPage(ixfileHandle);
     }
     else if(node->nodeType == RootOnly)
     {
@@ -250,12 +250,12 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         free(page2);
         node->children.push_back(new_leafNode1.cPage);
         node->children.push_back(new_leafNode2.cPage);
-        writeNodeToPage(ixfileHandle, node);
+        node->writeNodeToPage(ixfileHandle);
 
         new_leafNode1.next = new_leafNode2.cPage;
         new_leafNode2.previous = new_leafNode1.cPage;
-        writeNodeToPage(ixfileHandle, &new_leafNode1);
-        writeNodeToPage(ixfileHandle, &new_leafNode2);
+        new_leafNode1.writeNodeToPage(ixfileHandle);
+        new_leafNode2.writeNodeToPage(ixfileHandle);
 
     }
     else if(node->nodeType == RootNode)
@@ -297,18 +297,18 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         node->children.clear();        
         node->children.push_back(new_intermediate1.cPage);
         node->children.push_back(new_intermediate2.cPage);
-        writeNodeToPage(ixfileHandle, node);
+        node->writeNodeToPage(ixfileHandle);
 
-        writeNodeToPage(ixfileHandle, &new_intermediate1);
-        writeNodeToPage(ixfileHandle, &new_intermediate2);
+        new_intermediate1.writeNodeToPage(ixfileHandle);
+        new_intermediate2.writeNodeToPage(ixfileHandle);
     }
     return 0;
 }
 
-RC writeNodeToPage(IXFileHandle &ixfileHandle, Node *node){
+RC Node::writeNodeToPage(IXFileHandle &ixfileHandle){
     void *page = malloc(PAGE_SIZE);
-    node->serialize(page);
-    ixfileHandle.fileHandle.writePage(node->cPage, page);
+    this->serialize(page);
+    ixfileHandle.fileHandle.writePage(this->cPage, page);
     free(page);
     return 0;
 }
@@ -420,6 +420,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
      Node *node = new Node(&attribute, page);
      node = traverseToLeafNode(ixfileHandle, node, attribute);
      bool flag = false;
+     bool flag_ridNotFound = false;
      while(true)
      {
          for(int i=0;i<node->keys.size();i++)
@@ -434,11 +435,16 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
                             node->pointers[i].erase(node->pointers[i].begin() + j, node->pointers[i].begin() + j + 1);
                             break;
                         }
-                        else return -1;
-                    }
+                        else return -1;  //TODO1 
+                    }                   //TODO2 same rid
+                    flag_ridNotFound = true;
                 }
                 else
                 {
+                    if(node->pointers[i][0].pageNum != rid.pageNum || node->pointers[i][0].slotNum != rid.slotNum)
+                    {
+                         flag_ridNotFound = true;
+                    }
                     node->pointers.erase(node->pointers.begin() + i, node->pointers.begin() + i + 1);
                     node->keys.erase(node->keys.begin() + i, node->keys.begin() + i + 1);
                 }
@@ -455,16 +461,17 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         free(page);
         if(node->cPage == -1) return -1;
     }
+    if(flag_ridNotFound) return -1;
     /*
     if(node->keys.size() < node->order)
     {
         //merge
     }
     else{
-        writeNodeToPage(ixfileHandle, node);
+        node->writeNodeToPage(ixfileHandle);
     }
 */
-    writeNodeToPage(ixfileHandle, node);
+    node->writeNodeToPage(ixfileHandle);
 
     cout<<"-----------After delete--------------"<<endl;
     printBtree(ixfileHandle, attribute);

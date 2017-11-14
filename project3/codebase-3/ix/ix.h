@@ -157,6 +157,7 @@ public:
     bool isHalfFull();
     int getChildPos(const void* value);
     int getKeyPosition(const void *key);
+    RC writeNodeToPage(IXFileHandle &ixfileHandle);
     // bool isLessThan(const void* compValue, const void* compKey);
 };
 
