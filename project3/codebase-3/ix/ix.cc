@@ -515,6 +515,8 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle,
         bool        	highKeyInclusive,
         IX_ScanIterator &ix_ScanIterator)
 {
+    if (!ixfileHandle.fileHandle.isOpen())
+        return 1;
     ix_ScanIterator.attribute = &attribute;
     ix_ScanIterator.lowKey = lowKey;
     ix_ScanIterator.highKey = highKey;

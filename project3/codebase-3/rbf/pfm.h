@@ -57,6 +57,7 @@ public:
     unsigned getNumberOfPages();                                          // Get the number of pages in the file
     RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);  // Put the current counter values into variables
     RC openFile(const string &fileName);
+    bool isOpen();
     RC closeFile();
     RC readCounter();
     RC writeCounter();

@@ -133,6 +133,11 @@ RC FileHandle::openFile(const string &fileName)
     return 0;
 }
 
+bool FileHandle::isOpen()
+{
+    return fs.is_open();
+}
+
 RC FileHandle::closeFile()
 {
     if (fs.is_open())
