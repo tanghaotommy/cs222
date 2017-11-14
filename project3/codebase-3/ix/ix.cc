@@ -78,11 +78,14 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             
             int pos = root.getChildPos(key);
             //printNode(ixfileHandle, attribute, 0);
-            root.insertKey(pos, key); //Insert into vector.
+            int isNewKey = root.insertKey(pos, key); //return 0 if the key already exit.
             root.insertPointer(pos, rid, key); //Insert into vector.
             vector<Node*> path;
             path.push_back(&root);
-            if (root.pointers.size() > 2*root.order)
+            #ifdef DEBUG_IX              
+                printf("---------------[Split] isFull: %d, isNewKey: %d-------------------\n", root.isFull(), isNewKey);
+            #endif  
+            if ((isNewKey || root.keys.size() > 1) && root.isFull())
             {
                 split(path, ixfileHandle);                            
             } else
@@ -101,19 +104,23 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             traverseToLeafWithPath(ixfileHandle, &root, path, key, attribute);
             
             int pos = path[path.size() - 1]->getChildPos(key);
-            path[path.size() - 1]->insertKey(pos, key); //Insert into vector.
+            int isNewKey = path[path.size() - 1]->insertKey(pos, key); //return 0 if the key already exit.
             path[path.size() - 1]->insertPointer(pos, rid, key); //Insert into vector.
-            if (path[path.size() - 1]->keys.size() > 2*path[path.size() - 1]->order)
+#ifdef DEBUG_IX              
+                printf("----------------[Split] isFull: %d, isNewKey: %d------------------\n", path[path.size() - 1]->isFull(), isNewKey);
+#endif  
+            if((isNewKey || path[path.size() - 1]->keys.size() > 1) && path[path.size() - 1]->isFull())
             {
-                // cout<<"[Split]"<<endl;
-                split(path, ixfileHandle);                            
+#ifdef DEBUG_IX              
+                cout<<"[Split]"<<endl;
+                split(path, ixfileHandle);   
+#endif                         
             }
             else {
-                void *page = malloc(PAGE_SIZE);
-                path[path.size() - 1]->serialize(page);
-                ixfileHandle.fileHandle.writePage(path[path.size() - 1]->cPage, page);
-                free(page);
+                path[path.size() - 1]->writeNodeToPage(ixfileHandle);
+
             }
+
         }
     }
 #ifdef DEBUG_IX
@@ -145,7 +152,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
     Node *node = path[path.size() - 1];    
     if(node->nodeType == LeafNode)
     {
-        int order = node->order; 
+        int order = node->keys.size() / 2; 
 
         Node new_leaf = Node(node->attribute);
         new_leaf.nodeType = LeafNode;
@@ -169,11 +176,11 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         Node *parent = path[path.size() - 1];
 
         int pos = parent->getChildPos(new_leaf.keys[0]);
-        parent->insertKey(pos, new_leaf.keys[0]); 
+        int isNewKey = parent->insertKey(pos, new_leaf.keys[0]); 
 
         parent->insertChild(pos + 1, new_leaf.cPage); 
-        
-        if(parent->keys.size() > 2 * parent->order)
+
+        if((isNewKey || parent->keys.size() > 1) && parent->isFull())
         {
             split(path, ixfileHandle);            
         }
@@ -181,7 +188,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
     }
     else if(node->nodeType == InternalNode)
     {
-        int order = node->order;  
+        int order = node->keys.size() / 2; 
         Node new_intermediate(node->attribute);
         path.pop_back();
         Node *parent = path[path.size() - 1];
@@ -202,16 +209,15 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         new_intermediate.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
         free(page);
         int pos = parent->getChildPos(node->keys[order]);
-        parent->insertKey(pos, node->keys[order]); 
-
+        int isNewKey = parent->insertKey(pos, node->keys[order]); 
         parent->insertChild(pos + 1, new_intermediate.cPage);  //TODO Always pos + 1? what if it's first child?
 
         new_intermediate.writeNodeToPage(ixfileHandle);
         node->keys.erase(node->keys.begin() + order,node->keys.begin() + node->keys.size());
         node->children.erase(node->children.begin() + order + 1,node->children.begin() + node->children.size());
         node->writeNodeToPage(ixfileHandle);
-        
-        if(parent->keys.size() > 2 * parent->order)
+
+        if((isNewKey || parent->keys.size() > 1) && parent->isFull())
         {
             split(path, ixfileHandle);            
         }
@@ -219,7 +225,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
     }
     else if(node->nodeType == RootOnly)
     {
-        int order = node->order;  
+        int order = node->keys.size() / 2; 
         Node new_leafNode1(node->attribute);
         Node new_leafNode2(node->attribute);
         node->nodeType = RootNode;
@@ -260,7 +266,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
     }
     else if(node->nodeType == RootNode)
     {
-        int order = node->order;  
+        int order = node->keys.size() / 2;  
         Node new_intermediate1(node->attribute);
         Node new_intermediate2(node->attribute);
 
@@ -313,10 +319,11 @@ RC Node::writeNodeToPage(IXFileHandle &ixfileHandle){
     return 0;
 }
 
-RC Node::insertKey(int pos, const void* key)
+int Node::insertKey(int pos, const void* key)
 {
 #ifdef DEBUG_IX
-    printf("[insertKey]inserting keys, type: %d, pos : %d, total number of keys: %d\n", this->attrType, pos, this->keys.size());
+    printf("[insertKey]inserting keys, type: %d, pos : %d, total number of keys: %d, size of node: %d\n", 
+    this->attrType, pos, this->keys.size(), this->getNodeSize());
 #endif
     if (this->attrType == TypeInt)
     {
@@ -363,12 +370,10 @@ RC Node::insertKey(int pos, const void* key)
             free(data);
             return 0;
         } 
-        this->keys.insert(this->keys.begin() + pos, data);    
-        this->printKeys();
-        printf("\n");   
+        this->keys.insert(this->keys.begin() + pos, data);     
         // this->size += sizeof(int) + nameLength; 
     }
-    return 0;
+    return 1;
 }
 
 RC Node::insertPointer(int pos, const RID &rid, const void* key)
@@ -933,7 +938,10 @@ int Node::getNodeSize()
         {
             int nameLength;
             offset += sizeof(int);
-            // printf("String length: %d\n", nameLength);
+            memcpy(&nameLength, this->keys[i], sizeof(int));
+#ifdef DEBUG_IX
+            printf("String length: %d\n", nameLength);
+#endif
             offset += nameLength;
         }
     }

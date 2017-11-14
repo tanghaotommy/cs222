@@ -132,7 +132,7 @@ public:
     int next = -1;
     int previous = -1;
     int cPage = -1;
-    int order = 2;
+    //int order = 2;
     bool isLoaded = false;
     int overFlowPage = -1;
     int size = 0;
@@ -144,7 +144,7 @@ public:
     RC serialize(void *page);
     RC insert(void* key, RID rid);
     RC insert(void* key, int child);
-    RC insertKey(int pos, const void* key);
+    int insertKey(int pos, const void* key);
     RC insertChild(int pos, int pageNum);
     RC insertPointer(int pos, const RID &rid, const void* key); 
     RC appendKey(const void* key);
