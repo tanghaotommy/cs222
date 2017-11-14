@@ -113,8 +113,9 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             {
 #ifdef DEBUG_IX              
                 cout<<"[Split]"<<endl;
+#endif
                 split(path, ixfileHandle);   
-#endif                         
+                         
             }
             else {
                 path[path.size() - 1]->writeNodeToPage(ixfileHandle);
