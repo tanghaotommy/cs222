@@ -134,6 +134,8 @@ public:
     int cPage = -1;
     int order = 2;
     bool isLoaded = false;
+    int overFlowPage = -1;
+    int size = 0;
 
     Node(const Attribute *attribute, const void* page);
     Node(const Attribute &attribute);
@@ -150,6 +152,9 @@ public:
     RC appendPointer(vector<RID> rids);
     RC printKeys();
     RC printRids();
+    int getNodeSize();
+    bool isFull();
+    bool isHalfFull();
     int getChildPos(const void* value);
     int getKeyPosition(const void *key);
     // bool isLessThan(const void* compValue, const void* compKey);

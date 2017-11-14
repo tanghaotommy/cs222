@@ -333,6 +333,7 @@ RC Node::insertKey(int pos, const void* key)
             return 0;
         } 
         this->keys.insert(this->keys.begin() + pos, data);
+        // this->size += sizeof(attribute->length);
     }
     else if (this->attrType == TypeReal)
     {
@@ -344,6 +345,7 @@ RC Node::insertKey(int pos, const void* key)
             return 0;
         } 
         this->keys.insert(this->keys.begin() + pos, data);
+        // this->size += sizeof(attribute->length);
     }
     else if (this->attrType == TypeVarChar)
     {
@@ -363,7 +365,8 @@ RC Node::insertKey(int pos, const void* key)
         } 
         this->keys.insert(this->keys.begin() + pos, data);    
         this->printKeys();
-        printf("\n");    
+        printf("\n");   
+        // this->size += sizeof(int) + nameLength; 
     }
     return 0;
 }
@@ -709,12 +712,15 @@ Node::Node(const Attribute &attribute)
 {
     this->attribute = &attribute;
     this->attrType = attribute.type;
+    this->size = sizeof(NodeType) + sizeof(int) + sizeof(int) + sizeof(int) + sizeof(int) + sizeof(int);
+    // NodeType, previous pointer, next pointer, # of keys, # of children, overflow page
 }
 
 Node::Node(const Attribute *attribute)
 {
     this->attribute = attribute;
     this->attrType = attribute->type;
+    this->size = sizeof(NodeType) + sizeof(int) + sizeof(int) + sizeof(int) + sizeof(int) + sizeof(int);
 }
 
 
@@ -806,8 +812,11 @@ Node::Node(const Attribute *attribute, const void *page)
             this->children.push_back(value);
         }
     }
+    memcpy(&this->overFlowPage, (char *)page + offset, sizeof(int));
+    offset += sizeof(int);
     if (this->nodeType == RootOnly || this->nodeType == RootNode)
         this->cPage = 0;
+    this->size = offset;
 }
 
 RC Node::serialize(void * page)
@@ -889,8 +898,78 @@ RC Node::serialize(void * page)
             offset += sizeof(int);
         }
     }
-
+    memcpy((char *)page + offset, &this->overFlowPage, sizeof(int));
+    offset += sizeof(int);
     return 0;
+}
+
+int Node::getNodeSize()
+{
+    int offset = 0;
+    offset += sizeof(NodeType);
+    offset += sizeof(int);
+    offset += sizeof(int);
+
+    int nKeys = this->keys.size();
+    offset += sizeof(int);
+    for (int i = 0; i < nKeys; ++i)
+    {
+        if (this->attrType == TypeInt)
+        {
+            offset += sizeof(attribute->length);
+        }
+        else if (this->attrType == TypeReal)
+        {
+            offset += sizeof(attribute->length);
+        }
+        else if (this->attrType == TypeVarChar)
+        {
+            int nameLength;
+            offset += sizeof(int);
+            // printf("String length: %d\n", nameLength);
+            offset += nameLength;
+        }
+    }
+
+    if (this->nodeType == LeafNode || this->nodeType == RootOnly)
+    {
+        int nRids = this->pointers.size();
+#ifdef DEBUG_IX
+       // printf("[serialize] nPointers %d, offset: %d\n", pointers.size(), offset);
+#endif
+        offset += sizeof(int);
+        for (int i = 0; i < nRids; ++i)
+        {
+            int nRecords = pointers[i].size();
+            offset += sizeof(int);
+#ifdef DEBUG_IX
+          //  printf("[serialize] nRecords %d, offset: %d\n", pointers[i].size(), offset - sizeof(int));
+#endif
+            for (int j = 0; j < nRecords; ++j)
+            {
+                int pageNum = this->pointers[i][j].pageNum;
+                int slotNum = this->pointers[i][j].slotNum;
+                offset += sizeof(int);
+                offset += sizeof(int);
+#ifdef DEBUG_IX
+        //        printf("[serialize] Record (%d, %d) %d\n", pageNum, slotNum, offset);
+#endif
+            }
+        }
+    }
+    else
+    {
+        int nChildren = this->children.size();
+        offset += sizeof(int);
+        for (int i = 0; i < nChildren; ++i)
+        {
+            int value = this->children[i];
+            offset += sizeof(int);
+        }
+    }
+    offset += sizeof(int);
+    this->size = offset;
+    return offset;
 }
 
 RC Node::appendKey(const void* key)
@@ -1047,6 +1126,23 @@ RC Node::printRids()
     printf("]");
     return 0;
 }
+
+bool Node::isFull()
+{
+    if(this->getNodeSize() > PAGE_SIZE)
+        return true;
+    else
+        return false;
+}
+
+bool Node::isHalfFull()
+{
+    if (this->getNodeSize() > PAGE_SIZE / 2)
+        return true;
+    else
+        return false;
+}
+
 
 int Node::getChildPos(const void* value)
 {
