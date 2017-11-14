@@ -144,7 +144,7 @@ public:
     Node(const Attribute *attribute);
     ~Node();
     RC serialize(void *page);
-    RC serializeOverflowPage(int start, int end, void* page);
+    int serializeOverflowPage(int start, int end, void* page);
     RC deserializeOverflowPage(int nodeId, IXFileHandle *ixfileHandle);
     RC insert(void* key, RID rid);
     RC insert(void* key, int child);
