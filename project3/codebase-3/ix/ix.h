@@ -127,7 +127,7 @@ class Node {
 public:
     NodeType nodeType;
     AttrType attrType;
-    const Attribute * attribute; 
+    const Attribute *attribute; 
     vector<void *> keys;
     vector<int> children; //pointers to children
     vector<vector<RID>> pointers; //where the record lies
@@ -136,14 +136,17 @@ public:
     int cPage = -1;
     //int order = 2;
     bool isLoaded = false;
-    int overFlowPage = -1;
+    bool isOverflow = false;
+    vector<int> overFlowPages;
     int size = 0;
 
-    Node(const Attribute *attribute, const void* page);
+    Node(const Attribute *attribute, const void* page, IXFileHandle *ixfileHandle);
     Node(const Attribute &attribute);
     Node(const Attribute *attribute);
     ~Node();
     RC serialize(void *page);
+    int serializeOverflowPage(int start, int end, void* page);
+    RC deserializeOverflowPage(int nodeId, IXFileHandle *ixfileHandle);
     RC insert(void* key, RID rid);
     RC insert(void* key, int child);
     int insertKey(int pos, const void* key);
@@ -159,6 +162,7 @@ public:
     bool isHalfFull();
     int getChildPos(const void* value);
     int getKeyPosition(const void *key);
+    int getHeaderAndKeysSize();
     RC writeNodeToPage(IXFileHandle &ixfileHandle);
     int deleteRecord(int pos, const RID &rid);
     int findKey(const void* key);

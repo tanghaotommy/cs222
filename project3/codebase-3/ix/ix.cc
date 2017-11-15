@@ -71,8 +71,8 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         
         void *page = malloc(PAGE_SIZE);
         ixfileHandle.fileHandle.readPage(0, page);
-        Node root = Node(&attribute, page);
-        //free(page);
+        Node root = Node(&attribute, page, &ixfileHandle);
+        // free(page);
         if (root.nodeType == RootOnly)
         {
             
@@ -94,12 +94,10 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
                 path.clear();  
                 
                 free(page);                         
-            } else
+            } 
+            else
             {   
-                realloc(page, PAGE_SIZE);
-                root.serialize(page);
-                int rc = ixfileHandle.fileHandle.writePage(root.cPage, page);
-                
+                root.writeNodeToPage(ixfileHandle);	
                 for(int i=1;i<path.size();i++)
                 {
                     delete path[i];
@@ -118,7 +116,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
             int isNewKey = path[path.size() - 1]->insertKey(pos, key); //return 0 if the key already exit.
             path[path.size() - 1]->insertPointer(pos, rid, key); //Insert into vector.
 #ifdef DEBUG_IX              
-                printf("----------------[Split] isFull: %d, isNewKey: %d------------------\n", path[path.size() - 1]->isFull(), isNewKey);
+            printf("[Split] isFull: %d, isNewKey: %d\n", path[path.size() - 1]->isFull(), isNewKey);
 #endif  
             if((isNewKey || path[path.size() - 1]->keys.size() > 1) && path[path.size() - 1]->isFull())
             {
@@ -154,7 +152,7 @@ RC IndexManager::traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node *root, 
     int pos = root->getChildPos(key);            
     void *page = malloc(PAGE_SIZE);     
     ixfileHandle.fileHandle.readPage(root->children[pos], page);
-    Node *node = new Node(&attribute, page);   
+    Node *node = new Node(&attribute, page, &ixfileHandle);   
     node->cPage = root->children[pos];
     free(page);   
     traverseToLeafWithPath(ixfileHandle, node, path, key, attribute);                
@@ -170,6 +168,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
 
         Node new_leaf = Node(node->attribute);
         new_leaf.nodeType = LeafNode;
+	new_leaf.overFlowPages = node->overFlowPages;
 
         for(int i=order;i < node->keys.size();i++)
         {
@@ -252,6 +251,8 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         node->nodeType = RootNode;
         new_leafNode1.nodeType = LeafNode;
         new_leafNode2.nodeType = LeafNode;
+	new_leafNode1.overFlowPages = node->overFlowPages;
+	new_leafNode2.overFlowPages = node->overFlowPages;
         //node->children.append();
         for(int i = 0;i < node->keys.size();i++)
         {
@@ -333,10 +334,129 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
 }
 
 RC Node::writeNodeToPage(IXFileHandle &ixfileHandle){
-    void *page = malloc(PAGE_SIZE);
-    this->serialize(page);
-    ixfileHandle.fileHandle.writePage(this->cPage, page);
-    free(page);
+    if ((this->nodeType == RootOnly || this->nodeType == LeafNode) && this->keys.size() == 1 && this->getNodeSize() > PAGE_SIZE)
+    {
+        int sizeofRid = 2 * sizeof(int);
+        int nRidsInNode = (PAGE_SIZE - this->getHeaderAndKeysSize()) / sizeofRid;
+        int left = this->pointers[0].size() - nRidsInNode;
+        int nRidsPerPage = (PAGE_SIZE - 2*sizeof(int)) / sizeofRid;
+        int needed = left / nRidsPerPage + 1;
+#ifdef DEBUG_IX
+	printf("[writeNodeToPage] size of node: %d, size of overhead: %d\n", this->size, this->getHeaderAndKeysSize());
+	printf("[writeNodeToPage] Overflow, size of node: %d, page needed: %d, nRidsPerPage: %d, total # keys: %d, nRidsInNode: %d\n",
+		this->size, needed, nRidsPerPage, this->pointers[0].size(), nRidsInNode);
+#endif
+        if (needed > this->overFlowPages.size())
+        {
+            void *page = malloc(PAGE_SIZE);
+            ixfileHandle.fileHandle.appendPage(page);
+            this->overFlowPages.push_back(ixfileHandle.fileHandle.getNumberOfPages() - 1);
+        }
+
+        //serialize original node
+        void *page = malloc(PAGE_SIZE);
+        int offset = 0;
+        memcpy((char *)page + offset, &this->nodeType, sizeof(NodeType));
+        offset += sizeof(NodeType);
+        memcpy((char *)page + offset, &this->previous, sizeof(int));
+        offset += sizeof(int);
+        memcpy((char *)page + offset, &this->next, sizeof(int));
+        offset += sizeof(int);
+
+        int nKeys = this->keys.size();
+        memcpy((char *)page + offset, &nKeys, sizeof(int));
+        offset += sizeof(int);
+        for (int i = 0; i < nKeys; ++i)
+        {
+            if (this->attrType == TypeInt)
+            {
+                memcpy((char *)page + offset, this->keys[i], sizeof(attribute->length));
+                offset += sizeof(attribute->length);
+            }
+            else if (this->attrType == TypeReal)
+            {
+                memcpy((char *)page + offset, this->keys[i], sizeof(attribute->length));
+                offset += sizeof(attribute->length);
+            }
+            else if (this->attrType == TypeVarChar)
+            {
+                int nameLength;
+                memcpy(&nameLength, this->keys[i], sizeof(int));
+                memcpy((char *)page + offset, &nameLength, sizeof(int));
+                offset += sizeof(int);
+                // printf("String length: %d\n", nameLength);
+                memcpy((char *)page + offset, (char *) this->keys[i] + sizeof(int), nameLength);
+                offset += nameLength;
+            }
+        }
+
+        int nRids = this->pointers.size();
+        memcpy((char *)page + offset, &nRids, sizeof(int));
+        offset += sizeof(int);
+        for (int i = 0; i < nRids; ++i)
+        {
+            int nRecords = nRidsInNode;
+            memcpy((char *)page + offset, &nRecords, sizeof(int));
+            offset += sizeof(int);
+
+            for (int j = 0; j < nRecords; ++j)
+            {
+                int pageNum = this->pointers[i][j].pageNum;
+                int slotNum = this->pointers[i][j].slotNum;
+                memcpy((char *)page + offset, &pageNum, sizeof(int));
+                offset += sizeof(int);
+                memcpy((char *)page + offset, &slotNum, sizeof(int));
+                offset += sizeof(int);
+            }
+        }
+        memcpy((char *)page + offset, &this->overFlowPages[0], sizeof(int));
+        offset += sizeof(int);
+#ifdef DEBUG_IX
+        printf("[writePageToNode] Original node offset: %d\n", offset);
+	printf("[writePageToNode] Original page contains Rids from %d to %d\n", 0, nRidsInNode - 1);
+#endif
+        ixfileHandle.fileHandle.writePage(this->cPage, page);
+
+        //serialize each overflow pages
+#ifdef DEBUG_IX
+	printf("[");
+	for (int i = 0; i < this->overFlowPages.size(); ++i)
+	{
+	    printf("%d, ", this->overFlowPages[i]);
+	}
+	printf("]\n");
+#endif
+        for (int i = 0; i < this->overFlowPages.size(); ++i)
+        {
+            if (i != this->overFlowPages.size() - 1)
+            {
+                int offset = this->serializeOverflowPage(i*nRidsPerPage + nRidsInNode, (i+1)*nRidsPerPage + nRidsInNode, page);
+                memcpy((char *)page + offset, &this->overFlowPages[i + 1], sizeof(int));
+            }
+            else
+            {
+                int offset = this->serializeOverflowPage(i*nRidsPerPage + nRidsInNode, this->pointers[0].size(), page);
+#ifdef DEBUG_IX
+        printf("[writePageToNode] Last overflow node offset: %d\n", offset);
+#endif
+                int nextPage = -1;
+                memcpy((char *)page + offset, &nextPage, sizeof(int));
+            }
+            ixfileHandle.fileHandle.writePage(this->overFlowPages[i], page);
+        }
+        free(page);
+        return 0;
+    }
+    else
+    {
+#ifdef DEBUG_IX
+	printf("[writeNodeToPage] Normal page write\n");
+#endif
+        void *page = malloc(PAGE_SIZE);
+        this->serialize(page);
+        ixfileHandle.fileHandle.writePage(this->cPage, page);
+        free(page);
+    }
     return 0;
 }
 
@@ -555,7 +675,7 @@ Node *IndexManager::traverseToLeafNode(IXFileHandle &ixfileHandle, Node *node, c
         void *page = malloc(PAGE_SIZE);
         int pageNum = node->children[0];
         ixfileHandle.fileHandle.readPage(node->children[0], page);
-        node = new Node(&attribute, page); 
+        node = new Node(&attribute, page, &ixfileHandle); 
         node->cPage = pageNum;
         free(page);
     }
@@ -601,7 +721,7 @@ void IndexManager::printNode(IXFileHandle &ixfileHandle, const Attribute &attrib
 {
     void *page = malloc(PAGE_SIZE);
     ixfileHandle.fileHandle.readPage(pageNum, page);
-    Node node(&attribute, page);
+    Node node(&attribute, page, &ixfileHandle);
     if (node.nodeType == LeafNode || node.nodeType == RootOnly)
     {
         printf("{\n");
@@ -647,7 +767,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     {
         void *page = malloc(PAGE_SIZE);
         this->ixfileHandle->fileHandle.readPage(this->cPage, page);
-        this->node = new Node(this->attribute, page);
+        this->node = new Node(this->attribute, page, this->ixfileHandle);
         free(page);
     }
     // node->printRids();
@@ -682,7 +802,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             void *page = malloc(PAGE_SIZE);
             this->ixfileHandle->fileHandle.readPage(this->node->next, page);
             this->cPage = this->node->next;
-            this->node = new Node(this->attribute, page);
+            this->node = new Node(this->attribute, page, this->ixfileHandle);
             this->cRec = 0;
             this->cKey = 0;
             free(page);
@@ -745,7 +865,7 @@ int IX_ScanIterator::traverseToLeaf(Node *&node)
         // node->printKeys();
         void *page = malloc(PAGE_SIZE);
         this->ixfileHandle->fileHandle.readPage(node->children[pos], page);
-        node = new Node(this->attribute, page);
+        node = new Node(this->attribute, page, this->ixfileHandle);
 #ifdef DEBUG_IX
         node->printKeys();
         printf("\npos: %d\n", pos);
@@ -808,7 +928,7 @@ Node::Node(const Attribute *attribute)
 }
 
 
-Node::Node(const Attribute *attribute, const void *page)
+Node::Node(const Attribute *attribute, const void *page, IXFileHandle *ixfileHandle)
 {
     this->isLoaded = true;
     this->attrType = attribute->type;
@@ -896,11 +1016,54 @@ Node::Node(const Attribute *attribute, const void *page)
             this->children.push_back(value);
         }
     }
-    memcpy(&this->overFlowPage, (char *)page + offset, sizeof(int));
+
+    int overFlowPage;
+    memcpy(&overFlowPage, (char *)page + offset, sizeof(int));
     offset += sizeof(int);
     if (this->nodeType == RootOnly || this->nodeType == RootNode)
         this->cPage = 0;
-    this->size = offset;
+    if (overFlowPage != -1)
+    {
+        this->isOverflow = true;
+        this->overFlowPages.push_back(overFlowPage);
+        this->deserializeOverflowPage(overFlowPage, ixfileHandle);
+    }
+    // this->size = offset;
+}
+
+RC Node::deserializeOverflowPage(int nodeId, IXFileHandle *ixfileHandle)
+{
+    void *page = malloc(PAGE_SIZE);
+    ixfileHandle->fileHandle.readPage(nodeId, page);
+    int offset = 0;
+    int nRids;
+    memcpy(&nRids, (char *)page + offset, sizeof(int));
+    offset += sizeof(int);
+#ifdef DEBUG_IX
+    printf("[deserialize] nRids in overflow page: %d\n", nRids);
+#endif
+    for (int i = 0; i < nRids; ++i)
+    {
+        RID rid;
+        memcpy(&rid.pageNum, (char *)page + offset, sizeof(int));
+        offset += sizeof(int);
+        memcpy(&rid.slotNum, (char *)page + offset, sizeof(int));
+        offset += sizeof(int);
+        this->pointers[0].push_back(rid);
+    }
+    int overFlowPage;
+    memcpy(&overFlowPage, (char *)page + offset, sizeof(int));
+    offset += sizeof(int);
+#ifdef DEBUG_IX
+    printf("[deserialize] offset: %d, next overflow page: %d\n", offset, overFlowPage);
+#endif
+    if (overFlowPage != -1)
+    {
+        this->overFlowPages.push_back(overFlowPage);
+        this->deserializeOverflowPage(overFlowPage, ixfileHandle);
+    }
+    free(page);
+    return 0;
 }
 
 RC Node::serialize(void * page)
@@ -982,9 +1145,65 @@ RC Node::serialize(void * page)
             offset += sizeof(int);
         }
     }
-    memcpy((char *)page + offset, &this->overFlowPage, sizeof(int));
+
+    int overFlowPage = -1;
+    memcpy((char *)page + offset, &overFlowPage, sizeof(int));
     offset += sizeof(int);
     return 0;
+}
+
+int Node::serializeOverflowPage(int start, int end, void *page)
+{
+#ifdef DEBUG_IX
+    printf("[serializeOverflowPage] Overflow page contains Rids from %d to %d\n", start, end - 1);
+#endif
+    int nRids = end - start;
+    int offset = 0;
+    memcpy((char *)page + offset, &nRids, sizeof(int));
+    offset += sizeof(int);
+    for (int i = start; i < end; ++i)
+    {
+        int pageNum = this->pointers[0][i].pageNum;
+        int slotNum = this->pointers[0][i].slotNum;
+        memcpy((char *)page + offset, &pageNum, sizeof(int));
+        offset += sizeof(int);
+        memcpy((char *)page + offset, &slotNum, sizeof(int));
+        offset += sizeof(int);
+    }
+    return offset;
+}
+
+int Node::getHeaderAndKeysSize()
+{
+    int offset = 0;
+    offset += sizeof(NodeType);
+    offset += sizeof(int);
+    offset += sizeof(int);
+
+    int nKeys = this->keys.size();
+    offset += sizeof(int);
+    for (int i = 0; i < nKeys; ++i)
+    {
+        if (this->attrType == TypeInt)
+        {
+            offset += sizeof(attribute->length);
+        }
+        else if (this->attrType == TypeReal)
+        {
+            offset += sizeof(attribute->length);
+        }
+        else if (this->attrType == TypeVarChar)
+        {
+            int nameLength;
+            offset += sizeof(int);
+            memcpy(&nameLength, this->keys[i], sizeof(int));
+            offset += nameLength;
+        }
+    }
+    offset += sizeof(int); //overflow pointer
+    offset += sizeof(int); //number of vectors of Rids
+    offset += sizeof(int); //number of Rids in the vector
+    return offset;
 }
 
 int Node::getNodeSize()
@@ -1193,7 +1412,7 @@ RC Node::printRids()
             char* value_c = (char *)malloc(nameLength + 1);
             memcpy(value_c, (char *)this->keys[i] + sizeof(int), nameLength);
             value_c[nameLength] = '\0';
-            printf("\"%s:", value_c);
+            printf("%s:", value_c);
             free(value_c);
         }
 
@@ -1205,8 +1424,6 @@ RC Node::printRids()
                 printf(",");
         }
         printf("]\"");
-        if (this->attrType == TypeVarChar)
-            printf("\"");
         if (i != this->keys.size() - 1)
             printf(",");
     }
