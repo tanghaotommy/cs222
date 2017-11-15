@@ -1348,7 +1348,7 @@ RC Node::printRids()
             char* value_c = (char *)malloc(nameLength + 1);
             memcpy(value_c, (char *)this->keys[i] + sizeof(int), nameLength);
             value_c[nameLength] = '\0';
-            printf("\"%s:", value_c);
+            printf("%s:", value_c);
             free(value_c);
         }
 
@@ -1360,8 +1360,6 @@ RC Node::printRids()
                 printf(",");
         }
         printf("]\"");
-        if (this->attrType == TypeVarChar)
-            printf("\"");
         if (i != this->keys.size() - 1)
             printf(",");
     }
