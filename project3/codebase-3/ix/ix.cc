@@ -173,6 +173,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         ixfileHandle.fileHandle.appendPage(page);
         new_leaf.cPage = ixfileHandle.fileHandle.getNumberOfPages() - 1;
         free(page);
+        new_leaf.next = node->next;
         node->next = new_leaf.cPage;
         node->writeNodeToPage(ixfileHandle);
         new_leaf.previous = node->cPage;
@@ -184,7 +185,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         int isNewKey = parent->insertKey(pos, new_leaf.keys[0]); 
 
         parent->insertChild(pos + 1, new_leaf.cPage); 
-
+        
         delete path[path.size() - 1];
         path.pop_back();
 
@@ -794,10 +795,14 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         }
         if (this->cKey >= this->node->pointers.size() && this->node->next != -1)
         {
+#ifdef DEBUG_IX
+            printf("[getNextEntry] Current page: %d, loading next page: %d\n", this->node->cPage, this->node->next);
+#endif 
             void *page = malloc(PAGE_SIZE);
             this->ixfileHandle->fileHandle.readPage(this->node->next, page);
             this->cPage = this->node->next;
             this->node = new Node(this->attribute, page, this->ixfileHandle);
+            this->node->cPage = this->cPage;
             this->cRec = 0;
             this->cKey = 0;
             free(page);
@@ -805,6 +810,9 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 
         if (this->cKey >= this->node->keys.size() && this->node->next == -1)
         {
+#ifdef DEBUG_IX
+            printf("[getNextEntry] Current page: %d, loading next page: %d\n", this->node->cPage, this->node->next);
+#endif
             return IX_EOF;
         }
 #ifdef DEBUG_IX
@@ -817,6 +825,10 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         //     this->ixfileHandle->fileHandle.readPage(this->cPage, page);
         //     node = new Node(this->attribute, page);
         // }
+
+        if (this->cKey >= this->node->keys.size() || this->cRec >= this->node->pointers[this->cKey].size())
+            continue;
+
         if (lowKey != NULL)
             if (!((this->lowKeyInclusive && isLargerAndEqualThan(this->attribute, node->keys[this->cKey], this->lowKey)) || 
                 (!this->lowKeyInclusive && isLargerThan(this->attribute, node->keys[this->cKey], this->lowKey))))
