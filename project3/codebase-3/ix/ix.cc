@@ -601,6 +601,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         return -1;
     }
     
+    this->printBtree(ixfileHandle, attribute);
     /*
     if(node->keys.size() < node->order)
     {
@@ -610,13 +611,15 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         node->writeNodeToPage(ixfileHandle);
     }
 */
+
+    path.clear();
+    // this->printBtree(ixfileHandle, attribute);
+    leaf->writeNodeToPage(ixfileHandle);
+
     for(int i=1;i<path.size();i++)
     {
         delete path[i];
     }
-    path.clear();
-    
-    leaf->writeNodeToPage(ixfileHandle);
     return 0;
 }
 
