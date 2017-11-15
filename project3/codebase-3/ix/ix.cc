@@ -85,27 +85,19 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
             if ((isNewKey || root.keys.size() > 1) && root.isFull())
             {
-                split(path, ixfileHandle); 
-                
-                for(int i=1;i<path.size();i++)
-                {
-                    delete path[i];
-                }
-                path.clear();  
-                
-                free(page);                         
+                split(path, ixfileHandle);                  
             } 
             else
             {   
                 root.writeNodeToPage(ixfileHandle);	
-                for(int i=1;i<path.size();i++)
-                {
-                    delete path[i];
-                }
-                path.clear();
-                free(page);
-                return 0;
             }
+
+            for(int i=1;i<path.size();i++)
+            {
+                delete path[i];
+            }
+            path.clear();   
+            free(page);    
         } 
         else
         {
@@ -168,7 +160,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
 
         Node new_leaf = Node(node->attribute);
         new_leaf.nodeType = LeafNode;
-	new_leaf.overFlowPages = node->overFlowPages;
+	    new_leaf.overFlowPages = node->overFlowPages;
 
         for(int i=order;i < node->keys.size();i++)
         {
@@ -185,14 +177,16 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         node->writeNodeToPage(ixfileHandle);
         new_leaf.previous = node->cPage;
         new_leaf.writeNodeToPage(ixfileHandle);
-        delete path[path.size() - 1];
-        path.pop_back();
-        Node *parent = path[path.size() - 1];
+
+        Node *parent = path[path.size() - 2];
 
         int pos = parent->getChildPos(new_leaf.keys[0]);
         int isNewKey = parent->insertKey(pos, new_leaf.keys[0]); 
 
         parent->insertChild(pos + 1, new_leaf.cPage); 
+
+        delete path[path.size() - 1];
+        path.pop_back();
 
         if((isNewKey || parent->keys.size() > 1) && parent->isFull())
         {
@@ -207,9 +201,8 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
     {
         int order = node->keys.size() / 2; 
         Node new_intermediate(node->attribute);
-        delete path[path.size() - 1];
-        path.pop_back();
-        Node *parent = path[path.size() - 1];
+        
+        Node *parent = path[path.size() - 2];
 
         new_intermediate.nodeType = node->nodeType;
 
@@ -233,6 +226,8 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         node->children.erase(node->children.begin() + order + 1,node->children.begin() + node->children.size());
         node->writeNodeToPage(ixfileHandle);
 
+        delete path[path.size() - 1];
+        path.pop_back();
         if((isNewKey || parent->keys.size() > 1) && parent->isFull())
         {
             split(path, ixfileHandle);            
@@ -251,8 +246,8 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         node->nodeType = RootNode;
         new_leafNode1.nodeType = LeafNode;
         new_leafNode2.nodeType = LeafNode;
-	new_leafNode1.overFlowPages = node->overFlowPages;
-	new_leafNode2.overFlowPages = node->overFlowPages;
+	    new_leafNode1.overFlowPages = node->overFlowPages;
+	    new_leafNode2.overFlowPages = node->overFlowPages;
         //node->children.append();
         for(int i = 0;i < node->keys.size();i++)
         {
