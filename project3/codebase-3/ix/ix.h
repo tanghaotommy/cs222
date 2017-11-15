@@ -60,6 +60,7 @@ class IndexManager {
         RC traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node *node, vector<Node*> &path,const void *key,const Attribute &attribute);
         Node *traverseToLeafNode(IXFileHandle &ixfileHandle, Node *node, const Attribute &attribute);
         RC split(vector<Node*> path, IXFileHandle &ixfileHandle);
+        RC merge(vector<Node*> path, IXFileHandle &ixfileHandle);
     protected:
         IndexManager();
         ~IndexManager();
@@ -159,6 +160,8 @@ public:
     int getChildPos(const void* value);
     int getKeyPosition(const void *key);
     RC writeNodeToPage(IXFileHandle &ixfileHandle);
+    int deleteRecord(int pos, const RID &rid);
+    int findKey(const void* key);
     // bool isLessThan(const void* compValue, const void* compKey);
 };
 
