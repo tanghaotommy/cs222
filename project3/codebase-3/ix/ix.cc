@@ -565,7 +565,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     if (ixfileHandle.fileHandle.getNumberOfPages() == 0) return -1;
     void *page = malloc(PAGE_SIZE);
     ixfileHandle.fileHandle.readPage(0, page);
-    Node root = Node(&attribute, page); 
+    Node root = Node(&attribute, page, &ixfileHandle); 
     int pos;   
     int ridIsSingle;
     if(root.nodeType == RootOnly)
