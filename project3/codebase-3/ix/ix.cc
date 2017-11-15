@@ -564,6 +564,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     Node root = Node(&attribute, page, &ixfileHandle); 
     int pos;   
     int ridIsSingle;
+    free(page);
     if(root.nodeType == RootOnly)
     {
         pos = root.findKey(key);
@@ -580,6 +581,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         cout<<"-----------After delete--------------"<<endl;
         printBtree(ixfileHandle, attribute);
         */
+
         return 0;
     }
     vector<Node*> path;
@@ -587,13 +589,17 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     Node *leaf = path[path.size()-1];
 
     pos = leaf->findKey(key);
-    if(pos < 0) return -1;
+    if(pos < 0){
+        return -1;
+    }
     ridIsSingle = leaf->deleteRecord(pos, rid);
     if(ridIsSingle == 1)
     {
         leaf->keys.erase(leaf->keys.begin() + pos, leaf->keys.begin() + pos + 1);
     }
-    else if(ridIsSingle == -1) return -1;
+    else if(ridIsSingle == -1){
+        return -1;
+    }
     
     /*
     if(node->keys.size() < node->order)
@@ -604,11 +610,13 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         node->writeNodeToPage(ixfileHandle);
     }
 */
+    for(int i=0;i<path.size();i++)
+    {
+        delete path[i];
+    }
+    path.clear();
+    
     leaf->writeNodeToPage(ixfileHandle);
-/*
-    cout<<"-----------After delete--------------"<<endl;
-    printBtree(ixfileHandle, attribute);
-    */
     return 0;
 }
 
