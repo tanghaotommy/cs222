@@ -610,7 +610,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         node->writeNodeToPage(ixfileHandle);
     }
 */
-    for(int i=0;i<path.size();i++)
+    for(int i=1;i<path.size();i++)
     {
         delete path[i];
     }
