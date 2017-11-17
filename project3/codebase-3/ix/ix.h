@@ -56,7 +56,7 @@ class IndexManager {
 
         // Print the B+ tree in pre-order (in a JSON record format)
         void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
-        void printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const;
+        void printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum, int indent) const;
         RC traverseToLeafWithPath(IXFileHandle &ixfileHandle, Node *node, vector<Node*> &path,const void *key,const Attribute &attribute);
         Node *traverseToLeafNode(IXFileHandle &ixfileHandle, Node *node, const Attribute &attribute);
         RC split(vector<Node*> path, IXFileHandle &ixfileHandle);
@@ -156,7 +156,7 @@ public:
     RC appendChild(int pageNum);
     RC appendPointer(vector<RID> rids);
     RC printKeys();
-    RC printRids();
+    RC printRids(int indent);
     int getNodeSize();
     bool isFull();
     bool isHalfFull();
