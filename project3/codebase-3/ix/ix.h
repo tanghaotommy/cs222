@@ -16,7 +16,8 @@ bool isLessAndEqualThan(const Attribute *attribute, const void* compValue, const
 bool isLargerThan(const Attribute *attribute, const void* compValue, const void* compKey);
 bool isLargerAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey);
 bool isEqual(const void* value1, const void* value2, const Attribute *attribute);
-
+int getRidSize(vector<RID> rid);
+int getKeySize(const void* key, const Attribute *attribute);
 
 class IX_ScanIterator;
 class IXFileHandle;
@@ -61,6 +62,9 @@ class IndexManager {
         Node *traverseToLeafNode(IXFileHandle &ixfileHandle, Node *node, const Attribute &attribute);
         RC split(vector<Node*> path, IXFileHandle &ixfileHandle);
         RC merge(vector<Node*> path, IXFileHandle &ixfileHandle);
+        RC doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node*> path, int &pos, int &direction);
+        RC borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, Node * parent, int &position, int &direction);
+
     protected:
         IndexManager();
         ~IndexManager();
@@ -166,6 +170,8 @@ public:
     RC writeNodeToPage(IXFileHandle &ixfileHandle);
     int deleteRecord(int pos, const RID &rid);
     int findKey(const void* key);
+    int getRightSibling(IXFileHandle &ixfileHandle, Node *parent, int &pos);
+    int getLeftSibling(IXFileHandle &ixfileHandle, Node *parent, int &pos);
     // bool isLessThan(const void* compValue, const void* compKey);
 };
 

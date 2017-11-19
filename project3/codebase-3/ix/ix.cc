@@ -601,34 +601,422 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         return -1;
     }
     
-    /*
-    if(node->keys.size() < node->order)
-    {
-        //merge
-    }
-    else{
-        node->writeNodeToPage(ixfileHandle);
-    }
-*/
-    leaf->writeNodeToPage(ixfileHandle);
-    for(int i=1;i<path.size();i++)
-    {
-        delete path[i];
-    }
-    path.clear();
+    merge(path, ixfileHandle);
+    
+    // for(int i=1;i<path.size();i++)
+    // {
+    //     delete path[i];
+    // }
+    // path.clear();
     return 0;
 }
 
 RC IndexManager::merge(vector<Node*> path, IXFileHandle &ixfileHandle)
 {
-     Node *node = path[path.size() - 1];
-    if(node->nodeType == LeafNode)
-     {
-         Node *parent = path[path.size() - 2];
-         
-         
-     }
-     return 0;
+    Node *node = path[path.size() - 1];
+    Node *parent = path[path.size() - 2];
+
+    int sibling;
+    int position = -1;
+    int direction = 0; //0:right, 1:left
+    if(parent->children[parent->children.size() - 1] != node->cPage)
+    {
+        sibling = node->getRightSibling(ixfileHandle, parent, position);
+        direction = 0;
+    }
+    else{
+        sibling = node->getLeftSibling(ixfileHandle, parent, position);
+        direction = 1;
+    }
+    if(sibling == -1 || position == -1) return -1;
+
+    void *page = malloc(PAGE_SIZE);
+    ixfileHandle.fileHandle.readPage(sibling, page);
+    Node siblingNode = Node(node->attribute, page, &ixfileHandle); 
+    free(page);
+    if(node->isHalfFull() && siblingNode.isHalfFull())
+    {
+        doMerge(ixfileHandle, &siblingNode, path, position, direction);
+    }
+    else if(node->isHalfFull())
+    {
+         borrow(ixfileHandle, node, &siblingNode, parent, position, direction);
+    }
+    else
+    {
+        node->writeNodeToPage(ixfileHandle);
+    }
+
+    return 0;
+}
+
+RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node*> path, int &pos, int &direction)
+{
+    Node *node = path[path.size() - 1];
+    if(direction == 0)
+    {
+        if(node->nodeType == LeafNode)
+        {
+                Node *parent = path[path.size() - 2];
+                if(parent->nodeType == RootNode && parent->keys.size() == 1) 
+                    node->nodeType = RootOnly; 
+                for(int i=0;i<nextNode->keys.size();i++)
+                {
+                    node->appendKey(nextNode->keys[i]);
+                    node->appendPointer(nextNode->pointers[i]);
+                }
+                
+                parent->keys.erase(parent->keys.begin() + pos, parent->keys.begin() + pos + 1);
+                parent->children.erase(parent->children.begin() + pos + 1, parent->children.begin() + pos + 2);
+                if(node->nodeType == LeafNode)
+                    node->next = nextNode->next;
+                if(node->nodeType == LeafNode && nextNode->next != -1)
+                {
+                    void *page2 = malloc(PAGE_SIZE);
+                    ixfileHandle.fileHandle.readPage(node->next, page2);
+                    Node nextNextChild = Node(node->attribute, page2, &ixfileHandle); 
+                    free(page2);
+                    nextNextChild.previous = node->cPage;
+                    nextNextChild.writeNodeToPage(ixfileHandle);
+                }
+
+                node->writeNodeToPage(ixfileHandle);
+                delete path[path.size()-1];
+                path.pop_back();
+
+                if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+                                                //because its parents is rootNode
+                Node *grandParent = path[path.size() - 2];
+
+                int sibling;
+                int position = -1;
+                if(grandParent->children[grandParent->children.size() - 1] != parent->cPage)
+                {
+                    sibling = parent->getRightSibling(ixfileHandle, grandParent, position);
+                    direction = 0;
+                }
+                else{
+                    sibling = parent->getLeftSibling(ixfileHandle, grandParent, position);
+                    direction = 1;
+                }
+                if(sibling == -1 || position == -1) return -1;
+                void *page = malloc(PAGE_SIZE);
+                ixfileHandle.fileHandle.readPage(sibling, page);
+                Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+                free(page);
+
+                if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+                {
+                    doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
+                }
+                else if(parent->isHalfFull())
+                {
+                    borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
+                }
+                else{
+                    parent->writeNodeToPage(ixfileHandle);
+                }
+        }
+        else if(node->nodeType == InternalNode)
+        {
+                Node *parent = path[path.size() - 2];
+                if(parent->nodeType == RootNode && parent->keys.size() == 1) 
+                    node->nodeType = RootNode; 
+
+                node->appendKey(parent->keys[pos]);
+                for(int i=0;i<nextNode->keys.size();i++)
+                {
+                    node->appendKey(nextNode->keys[i]);
+                    node->appendChild(nextNode->children[i]);
+                }
+
+                parent->keys.erase(parent->keys.begin() + pos, parent->keys.begin() + pos + 1);
+                parent->children.erase(parent->children.begin() + pos + 1, parent->children.begin() + pos + 2);
+
+                node->writeNodeToPage(ixfileHandle);
+
+                delete path[path.size()-1];
+                path.pop_back();
+
+                if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+                                                //because its parents is rootNode
+                Node *grandParent = path[path.size() - 2]; //check whether its parent need to merge with parent's sibling
+                int sibling;
+                int position = -1;
+                if(grandParent->children[grandParent->children.size() - 1] != parent->cPage)
+                {
+                    sibling = parent->getRightSibling(ixfileHandle, grandParent, position);
+                    direction = 0;
+                }
+                else{
+                    sibling = parent->getLeftSibling(ixfileHandle, grandParent, position);
+                    direction = 1;
+                }
+                if(sibling == -1 || position == -1) return -1;
+                void *page = malloc(PAGE_SIZE);
+                ixfileHandle.fileHandle.readPage(sibling, page);
+                Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+                free(page);
+
+                if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+                {
+                    doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
+                }
+                else if(parent->isHalfFull())
+                {
+                    borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
+                }
+                else{
+                    parent->writeNodeToPage(ixfileHandle);
+                }
+        }
+    }
+    else if(direction == 1)
+    {
+        if(node->nodeType == LeafNode)
+        {
+            pos = pos - 1;
+            Node *parent = path[path.size() - 2];
+            if(parent->nodeType == RootNode && parent->keys.size() == 1) 
+                nextNode->nodeType = RootOnly;   //here, nextNode is the left sibling node
+            for(int i=0;i<node->keys.size();i++)
+            {
+                nextNode->appendKey(node->keys[i]);
+                nextNode->appendPointer(node->pointers[i]);
+            }
+            
+            parent->keys.erase(parent->keys.begin() + pos, parent->keys.begin() + pos + 1);
+            parent->children.erase(parent->children.begin() + pos + 1, parent->children.begin() + pos + 2);
+            if(node->nodeType == LeafNode)
+                nextNode->next = node->next;
+
+            nextNode->writeNodeToPage(ixfileHandle);
+            delete path[path.size()-1];
+            path.pop_back();
+
+            if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+                                            //because its parents is rootNode
+            Node *grandParent = path[path.size() - 2];
+
+            int sibling;
+            int position = -1;
+            if(grandParent->children[grandParent->children.size() - 1] != parent->cPage)
+            {
+                sibling = parent->getRightSibling(ixfileHandle, grandParent, position);
+                direction = 0;
+            }
+            else{
+                sibling = parent->getLeftSibling(ixfileHandle, grandParent, position);
+                direction = 1;
+            }
+            if(sibling == -1 || position == -1) return -1;
+            void *page = malloc(PAGE_SIZE);
+            ixfileHandle.fileHandle.readPage(sibling, page);
+            Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+            free(page);
+
+            if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+            {
+                doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
+            }
+            else if(parent->isHalfFull())
+            {
+                borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
+            }
+            else{
+                parent->writeNodeToPage(ixfileHandle);
+            }
+        }
+        else if(node->nodeType == InternalNode)
+        {
+            pos = pos - 1;
+            Node *parent = path[path.size() - 2];
+            if(parent->nodeType == RootNode && parent->keys.size() == 1) 
+                nextNode->nodeType = RootNode; 
+
+            nextNode->appendKey(parent->keys[pos]);
+            for(int i=0;i<node->keys.size();i++)
+            {
+                nextNode->appendKey(node->keys[i]);
+                nextNode->appendChild(node->children[i]);
+            }
+
+            parent->keys.erase(parent->keys.begin() + pos, parent->keys.begin() + pos + 1);
+            parent->children.erase(parent->children.begin() + pos + 1, parent->children.begin() + pos + 2);
+
+            nextNode->writeNodeToPage(ixfileHandle);
+
+            delete path[path.size()-1];
+            path.pop_back();
+
+            if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+                                            //because its parents is rootNode
+            Node *grandParent = path[path.size() - 2]; //check whether its parent need to merge with parent's sibling
+            int sibling;
+            int position = -1;
+            if(grandParent->children[grandParent->children.size() - 1] != parent->cPage)
+            {
+                sibling = parent->getRightSibling(ixfileHandle, grandParent, position);
+                direction = 0;
+            }
+            else{
+                sibling = parent->getLeftSibling(ixfileHandle, grandParent, position);
+                direction = 1;
+            }
+            if(sibling == -1 || position == -1) return -1;
+            void *page = malloc(PAGE_SIZE);
+            ixfileHandle.fileHandle.readPage(sibling, page);
+            Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+            free(page);
+
+            if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+            {
+                doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
+            }
+            else if(parent->isHalfFull())
+            {
+                borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
+            }
+            else{
+                parent->writeNodeToPage(ixfileHandle);
+            }
+        }
+    }
+    
+    return 0;
+}
+
+RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, Node *parent, int &position, int &direction)
+{
+    if(direction == 0)
+    {
+        if(node->nodeType == LeafNode)
+        {
+            if(node->getNodeSize() + getKeySize(sibling->keys[0], sibling->attribute) + getRidSize(sibling->pointers[0]) > PAGE_SIZE) //can't borrow
+            {
+                return 0;
+            }
+            node->appendKey(sibling->keys[0]);
+            node->appendPointer(sibling->pointers[0]);
+            sibling->keys.erase(sibling->keys.begin(), sibling->keys.begin() + 1);
+            sibling->pointers.erase(sibling->pointers.begin(), sibling->pointers.begin() + 1);
+            parent->keys[position] = sibling->keys[0];
+            
+            node->writeNodeToPage(ixfileHandle);
+            sibling->writeNodeToPage(ixfileHandle);
+            parent->writeNodeToPage(ixfileHandle);
+        }
+        else if(node->nodeType == InternalNode)
+        {
+            if(node->getNodeSize() + getKeySize(sibling->keys[0], sibling->attribute) + 4 > PAGE_SIZE) //can't burrow
+            {
+                return 0;
+            }
+            node->appendKey(sibling->keys[0]);
+            node->appendChild(sibling->children[0]);
+            sibling->keys.erase(sibling->keys.begin(), sibling->keys.begin() + 1);
+            sibling->children.erase(sibling->children.begin(), sibling->children.begin() + 1);
+            parent->keys[position] = sibling->keys[0];
+
+            node->writeNodeToPage(ixfileHandle);
+            sibling->writeNodeToPage(ixfileHandle);
+            parent->writeNodeToPage(ixfileHandle);
+        }
+    }
+    else if(direction == 1)
+    {
+        if(node->nodeType == LeafNode)
+        {
+            int keysSize = sibling->keys.size();
+            int pointerSize = sibling->pointers.size();
+            
+            if(node->getNodeSize() + getKeySize(sibling->keys[keysSize - 1], sibling->attribute) + getRidSize(sibling->pointers[pointerSize - 1]) > PAGE_SIZE) //can't borrow
+            {
+                return 0;
+            }
+
+            for(int i=0;i<sibling->pointers[pointerSize - 1].size();i++)
+            {
+                node->insertPointer(0, sibling->pointers[pointerSize - 1][i], sibling->keys[keysSize - 1]);
+            }
+            node->insertKey(0,sibling->keys[keysSize - 1]);
+            sibling->keys.erase(sibling->keys.begin() + keysSize - 1, sibling->keys.begin() + keysSize);
+            sibling->pointers.erase(sibling->pointers.begin() + pointerSize - 1, sibling->pointers.begin() + pointerSize);
+            parent->keys[position - 1] = node->keys[0]; //because child are 1 bigger than its left key
+            
+            node->writeNodeToPage(ixfileHandle);
+            sibling->writeNodeToPage(ixfileHandle);
+            parent->writeNodeToPage(ixfileHandle);
+        }
+        else if(node->nodeType == InternalNode)
+        {
+            int keysSize = sibling->keys.size();
+            int childrenSize = sibling->children.size();
+            if(node->getNodeSize() + getKeySize(sibling->keys[keysSize - 1], sibling->attribute) + 4 > PAGE_SIZE) //can't borrow
+            {
+                return 0;
+            }
+            node->insertKey(0, sibling->keys[keysSize - 1]);
+            node->insertChild(0, sibling->children[childrenSize - 1]);
+            sibling->keys.erase(sibling->keys.begin() + keysSize - 1, sibling->keys.begin() + keysSize);
+            sibling->children.erase(sibling->children.begin() + childrenSize - 1, sibling->children.begin() + childrenSize);
+            parent->keys[position - 1] = node->keys[0];
+
+            node->writeNodeToPage(ixfileHandle);
+            sibling->writeNodeToPage(ixfileHandle);
+            parent->writeNodeToPage(ixfileHandle);
+        }
+    }
+    
+    return 0;
+}
+
+int getKeySize(const void* key, const Attribute *attribute)
+{
+     if (attribute->type == TypeInt || attribute->type == TypeReal)
+    {
+        return 4;
+    }
+    else if (attribute->type == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)key, sizeof(int));
+        return nameLength + 4;
+    }
+    return 0;
+}
+
+int getRidSize(vector<RID> rid)
+{
+    return 8 * rid.size();
+}
+
+int Node::getRightSibling(IXFileHandle &ixfileHandle, Node *parent, int &position)
+{
+        for(int i=0;i<parent->children.size();i++)
+        {
+            if(parent->children[i] == this->cPage)
+            {
+                position = i;
+                return parent->children[i+1];
+            }
+
+    }
+
+    return -1;
+}
+
+int Node::getLeftSibling(IXFileHandle &ixfileHandle, Node *parent, int &position)
+{
+    for(int i=0;i<parent->children.size();i++)
+    {
+        if(parent->children[i] == this->cPage)
+        {
+            position = i;
+            return parent->children[i-1];
+        }
+    }
+    return -1;
 }
 
 int Node::deleteRecord(int pos, const RID &rid)
