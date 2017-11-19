@@ -538,7 +538,7 @@ RC Node::insertPointer(int pos, const RID &rid, const void* key)
     printf("[insertPointer]");
     this->printKeys();
     printf(" ");
-    this->printRids();
+    this->printRids(0);
 #endif
     return 0;
 }
@@ -1105,36 +1105,40 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
     // printf("[printBtree] atrribute type %d, length: %d\n", attribute.type, attribute.length);
     int numOfPages = ixfileHandle.fileHandle.getNumberOfPages();
     if(numOfPages < 1) return;
-        printNode(ixfileHandle, attribute, 0);
+    printNode(ixfileHandle, attribute, 0, 0);
+    printf("\n");	
 }
 
-void IndexManager::printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum) const
+void IndexManager::printNode(IXFileHandle &ixfileHandle, const Attribute &attribute, const int &pageNum, int indent) const
 {
     void *page = malloc(PAGE_SIZE);
     ixfileHandle.fileHandle.readPage(pageNum, page);
     Node node(&attribute, page, &ixfileHandle);
     if (node.nodeType == LeafNode || node.nodeType == RootOnly)
     {
-        printf("{\n");
-        node.printRids();
-        printf("\n}\n");
+        printf("%*s%s", indent, "", "{\n");
+        node.printRids(indent + 1);
+	printf("\n");
+        printf("%*s%s", indent, "", "}");
     }
     else
     {
-        printf("{\n");
-        printf("\"keys\":[");
+        printf("%*s%s", indent, "", "{\n");
+        printf("%*s%s", indent, "", "\"keys\":[");
         node.printKeys();
-        printf("], \n");
-        printf("\"children\":[\n");
+        printf("%*s%s", indent, "", "], \n");
+        printf("%*s%s", indent, "", "\"children\":[\n");
         for (int i = 0; i < node.children.size(); ++i)
         {
-            printNode(ixfileHandle, attribute, node.children[i]);
+            printNode(ixfileHandle, attribute, node.children[i], indent + 1);
             if (i != node.children.size() - 1)
+            {
                 printf(",");
-            printf("\n");
+            	printf("\n");
+            }
         }
-        printf("]");
-        printf("}\n");
+        printf("\n");
+        printf("%*s%s", indent, "", "]}");
     }
     free(page);
 }
@@ -1775,7 +1779,7 @@ RC Node::printKeys()
             char* value_c = (char *)malloc(nameLength + 1);
             memcpy(value_c, (char *)this->keys[i] + sizeof(int), nameLength);
             value_c[nameLength] = '\0';
-            printf("\"%s\"\n", value_c);
+            printf("\"%s\"", value_c);
             free(value_c);
         }
 
@@ -1785,9 +1789,9 @@ RC Node::printKeys()
     return 0;
 }
 
-RC Node::printRids()
+RC Node::printRids(int indent)
 {
-    printf("\"keys\":[");
+    printf("%*s%s", indent, "", "\"keys\":[");
     for (int i = 0; i < this->keys.size(); ++i)
     {
         printf("\"");
