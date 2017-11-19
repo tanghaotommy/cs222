@@ -160,10 +160,11 @@ public:
     RC appendChild(int pageNum);
     RC appendPointer(vector<RID> rids);
     RC printKeys();
+    RC printChildren();
     RC printRids(int indent);
     int getNodeSize();
     bool isFull();
-    bool isHalfFull();
+    bool isLessHalfFull();
     int getChildPos(const void* value);
     int getKeyPosition(const void *key);
     int getHeaderAndKeysSize();

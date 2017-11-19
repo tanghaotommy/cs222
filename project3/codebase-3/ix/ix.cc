@@ -633,12 +633,15 @@ RC IndexManager::merge(vector<Node*> path, IXFileHandle &ixfileHandle)
     void *page = malloc(PAGE_SIZE);
     ixfileHandle.fileHandle.readPage(sibling, page);
     Node siblingNode = Node(node->attribute, page, &ixfileHandle); 
+    siblingNode.cPage = sibling;
     free(page);
-    if(node->isHalfFull() && siblingNode.isHalfFull())
+    // cout<<"-----------------node pagesize----------"<<node->getNodeSize()<<endl;
+    // cout<<"-----------------sibling pagesize----------"<<siblingNode.getNodeSize()<<" isLesshalffull: "<<siblingNode.isLessHalfFull()<<endl;
+    if(node->isLessHalfFull() && siblingNode.isLessHalfFull() && node->getNodeSize() + siblingNode.getNodeSize() + 4 < PAGE_SIZE)
     {
         doMerge(ixfileHandle, &siblingNode, path, position, direction);
     }
-    else if(node->isHalfFull())
+    else if(node->isLessHalfFull())
     {
          borrow(ixfileHandle, node, &siblingNode, parent, position, direction);
     }
@@ -659,7 +662,12 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
         {
                 Node *parent = path[path.size() - 2];
                 if(parent->nodeType == RootNode && parent->keys.size() == 1) 
+                {
                     node->nodeType = RootOnly; 
+                    node->cPage = 0;
+                    parent->cPage = -1;
+                }
+
                 for(int i=0;i<nextNode->keys.size();i++)
                 {
                     node->appendKey(nextNode->keys[i]);
@@ -684,8 +692,11 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 delete path[path.size()-1];
                 path.pop_back();
 
-                if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+                if(path.size() == 1){
+                    parent->writeNodeToPage(ixfileHandle);
+                    return 0;  //do not need to check whether its parent need to merge with parent's sibling 
                                                 //because its parents is rootNode
+                } 
                 Node *grandParent = path[path.size() - 2];
 
                 int sibling;
@@ -703,13 +714,14 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 void *page = malloc(PAGE_SIZE);
                 ixfileHandle.fileHandle.readPage(sibling, page);
                 Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+                parentSiblingNode.cPage = sibling;
                 free(page);
 
-                if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+                if(parent->isLessHalfFull() && parentSiblingNode.isLessHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
                 {
                     doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
                 }
-                else if(parent->isHalfFull())
+                else if(parent->isLessHalfFull())
                 {
                     borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
                 }
@@ -720,9 +732,14 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
         else if(node->nodeType == InternalNode)
         {
                 Node *parent = path[path.size() - 2];
-                if(parent->nodeType == RootNode && parent->keys.size() == 1) 
+                if(parent->nodeType == RootNode && parent->keys.size() == 1)
+                {
                     node->nodeType = RootNode; 
-
+                    node->cPage = 0;
+                    parent->cPage = -1;
+                }
+                    
+                if(parent)
                 node->appendKey(parent->keys[pos]);
                 for(int i=0;i<nextNode->keys.size();i++)
                 {
@@ -738,8 +755,11 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 delete path[path.size()-1];
                 path.pop_back();
 
-                if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+                if(path.size() == 1){
+                    parent->writeNodeToPage(ixfileHandle);
+                    return 0;  //do not need to check whether its parent need to merge with parent's sibling 
                                                 //because its parents is rootNode
+                } 
                 Node *grandParent = path[path.size() - 2]; //check whether its parent need to merge with parent's sibling
                 int sibling;
                 int position = -1;
@@ -756,13 +776,14 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 void *page = malloc(PAGE_SIZE);
                 ixfileHandle.fileHandle.readPage(sibling, page);
                 Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+                parentSiblingNode.cPage = sibling;
                 free(page);
 
-                if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+                if(parent->isLessHalfFull() && parentSiblingNode.isLessHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
                 {
                     doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
                 }
-                else if(parent->isHalfFull())
+                else if(parent->isLessHalfFull())
                 {
                     borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
                 }
@@ -778,7 +799,11 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             pos = pos - 1;
             Node *parent = path[path.size() - 2];
             if(parent->nodeType == RootNode && parent->keys.size() == 1) 
-                nextNode->nodeType = RootOnly;   //here, nextNode is the left sibling node
+            { //here, nextNode is the left sibling node
+                nextNode->nodeType = RootOnly; 
+                nextNode->cPage = 0;
+                parent->cPage = -1;
+            }  
             for(int i=0;i<node->keys.size();i++)
             {
                 nextNode->appendKey(node->keys[i]);
@@ -787,6 +812,9 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             
             parent->keys.erase(parent->keys.begin() + pos, parent->keys.begin() + pos + 1);
             parent->children.erase(parent->children.begin() + pos + 1, parent->children.begin() + pos + 2);
+            // parent->printChildren();
+            // cout<<"+++++++++parent children size: "<<parent->children.size()<<endl;
+            
             if(node->nodeType == LeafNode)
                 nextNode->next = node->next;
 
@@ -794,8 +822,11 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             delete path[path.size()-1];
             path.pop_back();
 
-            if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+            if(path.size() == 1) {
+                parent->writeNodeToPage(ixfileHandle);
+                return 0;  //do not need to check whether its parent need to merge with parent's sibling 
                                             //because its parents is rootNode
+            }
             Node *grandParent = path[path.size() - 2];
 
             int sibling;
@@ -813,13 +844,14 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             void *page = malloc(PAGE_SIZE);
             ixfileHandle.fileHandle.readPage(sibling, page);
             Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+            parentSiblingNode.cPage = sibling;
             free(page);
 
-            if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+            if(parent->isLessHalfFull() && parentSiblingNode.isLessHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
             {
                 doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
             }
-            else if(parent->isHalfFull())
+            else if(parent->isLessHalfFull())
             {
                 borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
             }
@@ -831,8 +863,13 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
         {
             pos = pos - 1;
             Node *parent = path[path.size() - 2];
-            if(parent->nodeType == RootNode && parent->keys.size() == 1) 
+            if(parent->nodeType == RootNode && parent->keys.size() == 1)
+            {
                 nextNode->nodeType = RootNode; 
+                nextNode->cPage = 0;
+                parent->cPage = -1;
+            }
+                
 
             nextNode->appendKey(parent->keys[pos]);
             for(int i=0;i<node->keys.size();i++)
@@ -849,8 +886,11 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             delete path[path.size()-1];
             path.pop_back();
 
-            if(path.size() == 1) return 0;  //do not need to check whether its parent need to merge with parent's sibling 
+            if(path.size() == 1){
+                parent->writeNodeToPage(ixfileHandle);
+                return 0;  //do not need to check whether its parent need to merge with parent's sibling 
                                             //because its parents is rootNode
+            }
             Node *grandParent = path[path.size() - 2]; //check whether its parent need to merge with parent's sibling
             int sibling;
             int position = -1;
@@ -867,13 +907,14 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             void *page = malloc(PAGE_SIZE);
             ixfileHandle.fileHandle.readPage(sibling, page);
             Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+            parentSiblingNode.cPage = sibling;
             free(page);
 
-            if(parent->isHalfFull() && parentSiblingNode.isHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
+            if(parent->isLessHalfFull() && parentSiblingNode.isLessHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
             {
                 doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
             }
-            else if(parent->isHalfFull())
+            else if(parent->isLessHalfFull())
             {
                 borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
             }
@@ -968,6 +1009,16 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
         }
     }
     
+    return 0;
+}
+
+RC Node::printChildren()
+{
+    cout<<"[print Children]"<<endl;
+    cout<<"{";
+    for(int i=0;i<this->children.size();i++)
+        cout<<children[i]<<"  ";
+    cout<<"}"<<endl;
     return 0;
 }
 
@@ -1845,9 +1896,9 @@ bool Node::isFull()
         return false;
 }
 
-bool Node::isHalfFull()
+bool Node::isLessHalfFull()
 {
-    if (this->getNodeSize() > PAGE_SIZE / 2)
+    if (this->getNodeSize() < PAGE_SIZE / 2)
         return true;
     else
         return false;
