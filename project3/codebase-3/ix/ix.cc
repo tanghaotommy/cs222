@@ -957,7 +957,8 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             node->appendPointer(sibling->pointers[0]);
             sibling->keys.erase(sibling->keys.begin(), sibling->keys.begin() + 1);
             sibling->pointers.erase(sibling->pointers.begin(), sibling->pointers.begin() + 1);
-            parent->keys[position] = sibling->keys[0];
+
+            parent->replaceKey(position, sibling->keys[0]);
             
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
@@ -974,7 +975,7 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             node->appendChild(sibling->children[0]);
             sibling->keys.erase(sibling->keys.begin(), sibling->keys.begin() + 1);
             sibling->children.erase(sibling->children.begin(), sibling->children.begin() + 1);
-            parent->keys[position] = sibling->keys[0];
+            parent->replaceKey(position, sibling->keys[0]);
 
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
@@ -1000,7 +1001,7 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             node->insertKey(0,sibling->keys[keysSize - 1]);
             sibling->keys.erase(sibling->keys.begin() + keysSize - 1, sibling->keys.begin() + keysSize);
             sibling->pointers.erase(sibling->pointers.begin() + pointerSize - 1, sibling->pointers.begin() + pointerSize);
-            parent->keys[position - 1] = node->keys[0]; //because child are 1 bigger than its left key
+            parent->replaceKey(position - 1, sibling->keys[0]); //because child are 1 bigger than its left key
 
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
@@ -1018,7 +1019,7 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             node->insertChild(0, sibling->children[childrenSize - 1]);
             sibling->keys.erase(sibling->keys.begin() + keysSize - 1, sibling->keys.begin() + keysSize);
             sibling->children.erase(sibling->children.begin() + childrenSize - 1, sibling->children.begin() + childrenSize);
-            parent->keys[position - 1] = node->keys[0];
+            parent->replaceKey(position - 1, sibling->keys[0]);
 
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
@@ -1041,6 +1042,37 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
          cout<<"[test sibling after]"<<endl;
         sibling->printKeys();
         cout<<endl;
+    return 0;
+}
+
+RC Node::replaceKey(int pos, void *key)
+{
+     if (this->attrType == TypeInt)
+    {
+        // printf("[insertKey] inserting keys int\n");
+        void *data = malloc(attribute->length);
+        memcpy(data, (char *)key, sizeof(attribute->length));
+        free(this->keys[pos]);
+        this->keys[pos] = data;
+    }
+    else if (this->attrType == TypeReal)
+    {
+        void * data = malloc(attribute->length);
+        memcpy(data, (char *)key, sizeof(attribute->length));
+       
+        free(this->keys[pos]);
+        this->keys[pos] = data;
+    }
+    else if (this->attrType == TypeVarChar)
+    {
+        int nameLength;
+        memcpy(&nameLength, (char *)key, sizeof(int));
+        void* data = malloc(nameLength + sizeof(int));
+        memcpy(data, &nameLength, sizeof(int));
+        memcpy((char *) data + sizeof(int), (char *)key + sizeof(int), nameLength);
+        free(this->keys[pos]);
+        this->keys[pos] = pos;
+    }
     return 0;
 }
 

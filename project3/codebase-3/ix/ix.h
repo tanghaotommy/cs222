@@ -9,7 +9,7 @@
 
 # define IX_EOF (-1)  // end of the index scan
 
-//# define DEBUG_IX
+# define DEBUG_IX
 
 bool isLessThan(const Attribute *attribute, const void* compValue, const void* compKey);
 bool isLessAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey);
@@ -169,6 +169,7 @@ public:
     int getKeyPosition(const void *key);
     int getHeaderAndKeysSize();
     RC writeNodeToPage(IXFileHandle &ixfileHandle);
+    RC replaceKey(int pos, void *key);
     int deleteRecord(int pos, const RID &rid);
     int findKey(const void* key);
     int getRightSibling(IXFileHandle &ixfileHandle, Node *parent, int &pos);
