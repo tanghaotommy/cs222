@@ -645,6 +645,11 @@ RC IndexManager::merge(vector<Node*> path, IXFileHandle &ixfileHandle)
     else if(node->isLessHalfFull())
     {
          borrow(ixfileHandle, node, &siblingNode, parent, position, direction);
+        for(int i=1;i<path.size();i++)
+        {
+            delete path[i];
+        }
+        path.clear();
     }
     else
     {
@@ -694,26 +699,11 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 parent->writeNodeToPage(ixfileHandle);
                 node->writeNodeToPage(ixfileHandle);
 
-#ifdef DEBUG_IX
-    void *page7 = malloc(PAGE_SIZE);
-    ixfileHandle.fileHandle.readPage(8, page7);
-    Node x = Node(node->attribute, page7, &ixfileHandle); 
-    free(page7);
-    cout<<"--before-------page 8--------"<<endl;
-    x.printKeys();
-    cout<<endl;
-    cout<<"keys size: ";
-    cout<<x.keys.size()<<endl;
-    cout<<"page size: ";
-    cout<<x.getNodeSize()<<endl;
-#endif
-
-                delete path[path.size()-1];
+                // delete path[path.size()-1];
                 path.pop_back();
                 if(path.size() == 1){
-                    parent->writeNodeToPage(ixfileHandle);
-                    return 0;  //do not need to check whether its parent need to merge with parent's sibling 
-                                                //because its parents is rootNode
+                    return 0;   //do not need to check whether its parent need to merge with parent's sibling 
+                                //because its parents is rootNode
                 } 
 
                 Node *grandParent = path[path.size() - 2];
@@ -732,21 +722,9 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 if(sibling == -1 || position == -1) return -1;
                 void *page = malloc(PAGE_SIZE);
                 ixfileHandle.fileHandle.readPage(sibling, page);
-                Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+                Node parentSiblingNode = Node(parent->attribute, page, &ixfileHandle); 
                 parentSiblingNode.cPage = sibling;
                 free(page);
-
-        #ifdef DEBUG_IX
-                cout<<"---after------page 8--------"<<endl;
-                parentSiblingNode.printKeys();
-                cout<<"keys size: ";
-                cout<<parentSiblingNode.keys.size()<<endl;
-                cout<<"keys children: ";
-                cout<<parentSiblingNode.children.size()<<endl;
-                
-                cout<<"node page"<<endl;
-                cout<<node->cPage<<endl;
-        #endif
             
                 if(parent->isLessHalfFull() && parentSiblingNode.isLessHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
                 {
@@ -757,7 +735,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                     borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
                 }
                 else{
-                    parent->writeNodeToPage(ixfileHandle);
+                    return 0;
                 }
         }
         else if(node->nodeType == InternalNode)
@@ -784,11 +762,10 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 parent->writeNodeToPage(ixfileHandle);
                 node->writeNodeToPage(ixfileHandle);
 
-                delete path[path.size()-1];
+                // delete path[path.size()-1];
                 path.pop_back();
 
                 if(path.size() == 1){
-                    parent->writeNodeToPage(ixfileHandle);
                     return 0;  //do not need to check whether its parent need to merge with parent's sibling 
                                                 //because its parents is rootNode
                 } 
@@ -807,7 +784,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 if(sibling == -1 || position == -1) return -1;
                 void *page = malloc(PAGE_SIZE);
                 ixfileHandle.fileHandle.readPage(sibling, page);
-                Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+                Node parentSiblingNode = Node(parent->attribute, page, &ixfileHandle); 
                 parentSiblingNode.cPage = sibling;
                 free(page);
 
@@ -820,7 +797,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                     borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
                 }
                 else{
-                    parent->writeNodeToPage(ixfileHandle);
+                    return 0;
                 }
         }
     }
@@ -851,11 +828,10 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 nextNode->next = node->next;
             parent->writeNodeToPage(ixfileHandle);
             nextNode->writeNodeToPage(ixfileHandle);
-            delete path[path.size()-1];
+            // delete path[path.size()-1];
             path.pop_back();
 
             if(path.size() == 1) {
-                parent->writeNodeToPage(ixfileHandle);
                 return 0;  //do not need to check whether its parent need to merge with parent's sibling 
                                             //because its parents is rootNode
             }
@@ -875,7 +851,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             if(sibling == -1 || position == -1) return -1;
             void *page = malloc(PAGE_SIZE);
             ixfileHandle.fileHandle.readPage(sibling, page);
-            Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+            Node parentSiblingNode = Node(parent->attribute, page, &ixfileHandle); 
             parentSiblingNode.cPage = sibling;
             free(page);
 
@@ -888,7 +864,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
             }
             else{
-                parent->writeNodeToPage(ixfileHandle);
+                return 0;
             }
         }
         else if(node->nodeType == InternalNode)
@@ -902,7 +878,6 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 parent->cPage = -1;
             }
                 
-
             nextNode->appendKey(parent->keys[pos]);
             for(int i=0;i<node->keys.size();i++)
             {
@@ -916,11 +891,10 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             parent->writeNodeToPage(ixfileHandle);
             nextNode->writeNodeToPage(ixfileHandle);
 
-            delete path[path.size()-1];
+            // delete path[path.size()-1];
             path.pop_back();
 
             if(path.size() == 1){
-                parent->writeNodeToPage(ixfileHandle);
                 return 0;  //do not need to check whether its parent need to merge with parent's sibling 
                                             //because its parents is rootNode
             }
@@ -939,7 +913,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             if(sibling == -1 || position == -1) return -1;
             void *page = malloc(PAGE_SIZE);
             ixfileHandle.fileHandle.readPage(sibling, page);
-            Node parentSiblingNode = Node(node->attribute, page, &ixfileHandle); 
+            Node parentSiblingNode = Node(parent->attribute, page, &ixfileHandle); 
             parentSiblingNode.cPage = sibling;
             free(page);
 
@@ -952,7 +926,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 borrow(ixfileHandle, parent, &parentSiblingNode, grandParent, position, direction);
             }
             else{
-                parent->writeNodeToPage(ixfileHandle);
+                return 0;
             }
         }
     }
@@ -963,6 +937,14 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
 RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, Node *parent, int &position, int &direction)
 {
     if(sibling->keys.size() == 0) return 0;
+    cout<<"[borrow] before borrow"<<endl;
+    cout<<"node:"<<endl;
+    node->printKeys();
+    cout<<endl<<"parent:"<<endl;
+    parent->printKeys();
+    cout<<endl<<"sibling:"<<endl;
+    sibling->printKeys();
+    cout<<endl;
     if(direction == 0)
     {
         if(node->nodeType == LeafNode)
@@ -980,6 +962,7 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
             parent->writeNodeToPage(ixfileHandle);
+           
         }
         else if(node->nodeType == InternalNode)
         {
@@ -1009,7 +992,7 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             {
                 return 0;
             }
-
+            
             for(int i=0;i<sibling->pointers[pointerSize - 1].size();i++)
             {
                 node->insertPointer(0, sibling->pointers[pointerSize - 1][i], sibling->keys[keysSize - 1]);
@@ -1018,7 +1001,7 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             sibling->keys.erase(sibling->keys.begin() + keysSize - 1, sibling->keys.begin() + keysSize);
             sibling->pointers.erase(sibling->pointers.begin() + pointerSize - 1, sibling->pointers.begin() + pointerSize);
             parent->keys[position - 1] = node->keys[0]; //because child are 1 bigger than its left key
-            
+
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
             parent->writeNodeToPage(ixfileHandle);
@@ -1042,13 +1025,28 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             parent->writeNodeToPage(ixfileHandle);
         }
     }
-    
+    cout<<"[test sibling before]"<<endl;
+        sibling->printKeys();
+        cout<<endl;
+/*
+    cout<<endl<<"[borrow] after borrow"<<endl;
+    cout<<"node:"<<endl;
+    node->printKeys();
+    cout<<endl<<"parent:"<<endl;
+    parent->printKeys();
+    cout<<endl<<"sibling:"<<endl;
+    sibling->printKeys();
+    cout<<endl;
+*/
+         cout<<"[test sibling after]"<<endl;
+        sibling->printKeys();
+        cout<<endl;
     return 0;
 }
 
 RC Node::printChildren()
 {
-    cout<<"[print Children]+++++++++++++++++"<<endl;
+    cout<<"[print Children]"<<endl;
     cout<<"{";
     for(int i=0;i<this->children.size();i++)
         cout<<children[i]<<"  ";
@@ -1058,7 +1056,6 @@ RC Node::printChildren()
 
 int getKeySize(const void* key, const Attribute *attribute)
 {
-    cout<<"-----[nameLength]-------"<<endl;
     if (attribute->type == TypeInt || attribute->type == TypeReal)
     {
         return 4;
@@ -1861,9 +1858,9 @@ RC Node::printKeys()
         {
             int nameLength;
             memcpy(&nameLength, (char *)this->keys[i], sizeof(int));
-#ifdef DEBUG_IX
+ #ifdef DEBUG_IX
             printf("[printKeys] String length: %d\n", nameLength);
-#endif
+ #endif
             char* value_c = (char *)malloc(nameLength + 1);
             memcpy(value_c, (char *)this->keys[i] + sizeof(int), nameLength);
             value_c[nameLength] = '\0';
