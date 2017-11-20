@@ -936,15 +936,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
 
 RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, Node *parent, int &position, int &direction)
 {
-    if(sibling->keys.size() == 0) return 0;
-    cout<<"[borrow] before borrow"<<endl;
-    cout<<"node:"<<endl;
-    node->printKeys();
-    cout<<endl<<"parent:"<<endl;
-    parent->printKeys();
-    cout<<endl<<"sibling:"<<endl;
-    sibling->printKeys();
-    cout<<endl;
+    if(sibling->keys.size() <= 1) return 0;
     if(direction == 0)
     {
         if(node->nodeType == LeafNode)
@@ -1026,22 +1018,7 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             parent->writeNodeToPage(ixfileHandle);
         }
     }
-    cout<<"[test sibling before]"<<endl;
-        sibling->printKeys();
-        cout<<endl;
-/*
-    cout<<endl<<"[borrow] after borrow"<<endl;
-    cout<<"node:"<<endl;
-    node->printKeys();
-    cout<<endl<<"parent:"<<endl;
-    parent->printKeys();
-    cout<<endl<<"sibling:"<<endl;
-    sibling->printKeys();
-    cout<<endl;
-*/
-         cout<<"[test sibling after]"<<endl;
-        sibling->printKeys();
-        cout<<endl;
+
     return 0;
 }
 
@@ -1071,7 +1048,7 @@ RC Node::replaceKey(int pos, void *key)
         memcpy(data, &nameLength, sizeof(int));
         memcpy((char *) data + sizeof(int), (char *)key + sizeof(int), nameLength);
         free(this->keys[pos]);
-        this->keys[pos] = pos;
+        this->keys[pos] = data;
     }
     return 0;
 }
