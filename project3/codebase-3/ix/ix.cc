@@ -220,7 +220,7 @@ RC IndexManager::split(vector<Node*> path, IXFileHandle &ixfileHandle)
         free(page);
         int pos = parent->getChildPos(node->keys[order]);
         int isNewKey = parent->insertKey(pos, node->keys[order]); 
-        parent->insertChild(pos + 1, new_intermediate.cPage);  //TODO Always pos + 1? what if it's first child?
+        parent->insertChild(pos + 1, new_intermediate.cPage);  
 
         new_intermediate.writeNodeToPage(ixfileHandle);
         node->keys.erase(node->keys.begin() + order,node->keys.begin() + node->keys.size());
@@ -558,6 +558,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     cout<<"-----------Before delete--------------"<<endl;
     printBtree(ixfileHandle, attribute);
     */
+
     if (ixfileHandle.fileHandle.getNumberOfPages() == 0) return -1;
     void *page = malloc(PAGE_SIZE);
     ixfileHandle.fileHandle.readPage(0, page);
@@ -577,10 +578,6 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         }
         else if(ridIsSingle == -1) return -1;
         root.writeNodeToPage(ixfileHandle);
-        /*
-        cout<<"-----------After delete--------------"<<endl;
-        printBtree(ixfileHandle, attribute);
-        */
 
         return 0;
     }
@@ -589,6 +586,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     Node *leaf = path[path.size()-1];
 
     pos = leaf->findKey(key);
+
     if(pos < 0){
         return -1;
     }
@@ -601,6 +599,7 @@ RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
         return -1;
     }
     
+
     merge(path, ixfileHandle);
     
     // for(int i=1;i<path.size();i++)
@@ -662,7 +661,7 @@ RC IndexManager::merge(vector<Node*> path, IXFileHandle &ixfileHandle)
 RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node*> path, int &pos, int &direction)
 {
     Node *node = path[path.size() - 1];
-
+   
     if(direction == 0)
     {
         if(node->nodeType == LeafNode)
@@ -684,8 +683,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 
                 parent->keys.erase(parent->keys.begin() + pos, parent->keys.begin() + pos + 1);
                 parent->children.erase(parent->children.begin() + pos + 1, parent->children.begin() + pos + 2);
-                if(node->nodeType == LeafNode)
-                    node->next = nextNode->next;
+                node->next = nextNode->next;
                 if(node->nodeType == LeafNode && nextNode->next != -1)
                 {
                     void *page2 = malloc(PAGE_SIZE);
@@ -699,7 +697,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 parent->writeNodeToPage(ixfileHandle);
                 node->writeNodeToPage(ixfileHandle);
 
-                // delete path[path.size()-1];
+                delete path[path.size()-1];
                 path.pop_back();
                 if(path.size() == 1){
                     return 0;   //do not need to check whether its parent need to merge with parent's sibling 
@@ -725,7 +723,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 Node parentSiblingNode = Node(parent->attribute, page, &ixfileHandle); 
                 parentSiblingNode.cPage = sibling;
                 free(page);
-            
+
                 if(parent->isLessHalfFull() && parentSiblingNode.isLessHalfFull() && parent->getNodeSize() + parentSiblingNode.getNodeSize() + 4 < PAGE_SIZE)
                 {
                     doMerge(ixfileHandle, &parentSiblingNode, path, position, direction);
@@ -762,7 +760,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 parent->writeNodeToPage(ixfileHandle);
                 node->writeNodeToPage(ixfileHandle);
 
-                // delete path[path.size()-1];
+                delete path[path.size()-1];
                 path.pop_back();
 
                 if(path.size() == 1){
@@ -828,7 +826,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
                 nextNode->next = node->next;
             parent->writeNodeToPage(ixfileHandle);
             nextNode->writeNodeToPage(ixfileHandle);
-            // delete path[path.size()-1];
+            delete path[path.size()-1];
             path.pop_back();
 
             if(path.size() == 1) {
@@ -891,7 +889,7 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             parent->writeNodeToPage(ixfileHandle);
             nextNode->writeNodeToPage(ixfileHandle);
 
-            // delete path[path.size()-1];
+            delete path[path.size()-1];
             path.pop_back();
 
             if(path.size() == 1){
@@ -930,13 +928,13 @@ RC IndexManager::doMerge(IXFileHandle &ixfileHandle, Node *nextNode, vector<Node
             }
         }
     }
-    
     return 0;
 }
 
 RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, Node *parent, int &position, int &direction)
 {
     if(sibling->keys.size() <= 1) return 0;
+
     if(direction == 0)
     {
         if(node->nodeType == LeafNode)
@@ -963,11 +961,12 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             {
                 return 0;
             }
-            node->appendKey(sibling->keys[0]);
+            node->appendKey(parent->keys[position]);
             node->appendChild(sibling->children[0]);
+            parent->replaceKey(position, sibling->keys[0]);
             sibling->keys.erase(sibling->keys.begin(), sibling->keys.begin() + 1);
             sibling->children.erase(sibling->children.begin(), sibling->children.begin() + 1);
-            parent->replaceKey(position, sibling->keys[0]);
+           
 
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
@@ -1007,18 +1006,20 @@ RC IndexManager::borrow(IXFileHandle &ixfileHandle, Node* node, Node *sibling, N
             {
                 return 0;
             }
-            node->insertKey(0, sibling->keys[keysSize - 1]);
+            node->insertKey(0, parent->keys[position - 1]);
             node->insertChild(0, sibling->children[childrenSize - 1]);
+
+            parent->replaceKey(position - 1, sibling->keys[sibling->keys.size() - 1]);
+            
             sibling->keys.erase(sibling->keys.begin() + keysSize - 1, sibling->keys.begin() + keysSize);
             sibling->children.erase(sibling->children.begin() + childrenSize - 1, sibling->children.begin() + childrenSize);
-            parent->replaceKey(position - 1, sibling->keys[0]);
+            
 
             node->writeNodeToPage(ixfileHandle);
             sibling->writeNodeToPage(ixfileHandle);
             parent->writeNodeToPage(ixfileHandle);
         }
     }
-
     return 0;
 }
 
@@ -1026,7 +1027,6 @@ RC Node::replaceKey(int pos, void *key)
 {
      if (this->attrType == TypeInt)
     {
-        // printf("[insertKey] inserting keys int\n");
         void *data = malloc(attribute->length);
         memcpy(data, (char *)key, sizeof(attribute->length));
         free(this->keys[pos]);
@@ -1087,7 +1087,7 @@ int getRidSize(vector<RID> rid)
 
 int Node::getRightSibling(IXFileHandle &ixfileHandle, Node *parent, int &position)
 {
-        for(int i=0;i<parent->children.size();i++)
+        for(int i=0;i<parent->children.size() - 1;i++)
         {
             if(parent->children[i] == this->cPage)
             {
@@ -1242,6 +1242,9 @@ IX_ScanIterator::IX_ScanIterator()
     this->cPage = 0;
     this->cKey = 0;
     this->cRec = -1;
+    this->lastPage = -1;
+    this->lastRec = -1;
+    this->lastKey = -1;
 }
 
 IX_ScanIterator::~IX_ScanIterator()
@@ -1257,6 +1260,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         void *page = malloc(PAGE_SIZE);
         this->ixfileHandle->fileHandle.readPage(this->cPage, page);
         this->node = new Node(this->attribute, page, this->ixfileHandle);
+        this->node->cPage = this->cPage;
         free(page);
     }
     // node->printRids();
@@ -1278,6 +1282,13 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
     printf("\n");
 #endif
 
+
+    // unsigned readPageCount = 0;
+    // unsigned writePageCount = 0;
+    // unsigned appendPageCount = 0;
+    // this->ixfileHandle->collectCounterValues(readPageCount, writePageCount, appendPageCount);
+
+    // printf("[getNextEntry] readPageCount: %d\n", readPageCount);
     while(1)
     {
         this->cRec++;
@@ -1343,6 +1354,27 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             memcpy(key, &nameLength, sizeof(int));
             memcpy((char *)key + sizeof(int), (char *)this->node->keys[this->cKey] + sizeof(int), nameLength);
         }
+
+        if (this->lastPage == this->cPage)
+        {
+            void *page = malloc(PAGE_SIZE);
+            this->ixfileHandle->fileHandle.readPage(this->cPage, page);
+            this->node = new Node(this->attribute, page, this->ixfileHandle);
+            this->node->cPage = this->cPage;
+            free(page);
+            // if(this->lastKey >= this->node->pointers.size() || this->lastRec >= this->node->pointers)
+            if (!(this->node->pointers[lastKey][lastRec].pageNum == this->previousRid.pageNum && this->node->pointers[lastKey][lastRec].slotNum == this->previousRid.slotNum))
+            {
+                this->cKey = this->lastKey;
+                this->cPage = this->lastPage;
+                this->cRec = this->lastRec;
+            }
+        }
+
+        this->previousRid = rid;
+        this->lastKey = this->cKey;
+        this->lastPage= this->cPage;
+        this->lastRec = this->cRec;
         break;
     }
     return 0;

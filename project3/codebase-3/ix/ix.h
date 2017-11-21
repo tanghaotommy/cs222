@@ -99,6 +99,10 @@ class IX_ScanIterator {
         int cPage;
         int cRec;
         int cKey;
+        RID previousRid;
+      	int lastPage;;
+      	int lastRec;
+      	int lastKey;
         Node *node = NULL;
 };
 
