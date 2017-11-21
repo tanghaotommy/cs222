@@ -1305,6 +1305,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
             void *page = malloc(PAGE_SIZE);
             this->ixfileHandle->fileHandle.readPage(this->node->next, page);
             this->cPage = this->node->next;
+            delete this->node;
             this->node = new Node(this->attribute, page, this->ixfileHandle);
             this->node->cPage = this->cPage;
             this->cRec = 0;
@@ -1359,6 +1360,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
         {
             void *page = malloc(PAGE_SIZE);
             this->ixfileHandle->fileHandle.readPage(this->cPage, page);
+            delete this->node;
             this->node = new Node(this->attribute, page, this->ixfileHandle);
             this->node->cPage = this->cPage;
             free(page);
@@ -1397,6 +1399,7 @@ int IX_ScanIterator::traverseToLeaf(Node *&node)
         // node->printKeys();
         void *page = malloc(PAGE_SIZE);
         this->ixfileHandle->fileHandle.readPage(node->children[pos], page);
+        delete node;
         node = new Node(this->attribute, page, this->ixfileHandle);
 #ifdef DEBUG_IX
         node->printKeys();
