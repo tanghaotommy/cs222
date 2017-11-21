@@ -947,6 +947,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
         }
         if (cPage > fileHandle->getNumberOfPages() - 1)
         {
+            free(page);
             return RBFM_EOF;
         }
 
@@ -969,7 +970,10 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 
             //Has been deleted
             if (offset == -1)
+            {
+                free(page);
                 return 1;
+            }
             int recordLength;
             memcpy(&recordLength, (char *)page + offset, sizeof(int));
 
@@ -1169,6 +1173,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
                     }
                 }
                 memcpy((char *)data, nullsIndicator, nullFieldsIndicatorActualSize);
+                free(page);
                 return 0;
             }
         }
