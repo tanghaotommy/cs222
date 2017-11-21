@@ -653,6 +653,11 @@ RC IndexManager::merge(vector<Node*> path, IXFileHandle &ixfileHandle)
     else
     {
         node->writeNodeToPage(ixfileHandle);
+        for(int i=1;i<path.size();i++)
+        {
+            delete path[i];
+        }
+        path.clear();
     }
 
     return 0;
