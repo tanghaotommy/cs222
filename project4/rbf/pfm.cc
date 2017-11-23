@@ -165,6 +165,9 @@ FileHandle::~FileHandle()
 
 RC FileHandle::readPage(PageNum pageNum, void *data)
 {
+#ifdef DEBUG
+    printf("[readPage] read page: %d\n", pageNum);
+#endif
     if (pageNum >= this->getNumberOfPages())
     {
         return 1;
@@ -180,6 +183,9 @@ RC FileHandle::readPage(PageNum pageNum, void *data)
 
 RC FileHandle::writePage(PageNum pageNum, const void *data)
 {
+#ifdef DEBUG
+    printf("[writePage] writing to page: %d\n", pageNum);
+#endif
     if (pageNum >= this->getNumberOfPages())
     {
         return 1;

@@ -110,6 +110,12 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 RC RelationManager::deleteTable(const string &tableName)
 {
 	if(isSystemTable(tableName) != 0) return -1;
+
+	auto ite = HashMap.find(tableName);
+	if (ite != HashMap.end()) {
+		HashMap.erase(ite);
+	}
+
 	RecordBasedFileManager *rbfm=RecordBasedFileManager::instance();	
 	FileHandle fileHandle;
 	if(rbfm->openFile("Tables", fileHandle) != 0)
@@ -304,8 +310,16 @@ RC RelationManager::getAllAttributes(const string &tableName, vector<Attribute> 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
 	int tableId;
+		auto ite = HashMap.find(tableName);
+	if (ite != HashMap.end())
+	{
+		attrs = ite->second;
+		return 0;
+	}
 	if(this->getTableId(tableName, tableId) != 0)
 		return -1;
+	
+
 
 	vector<Attribute> recordDescriptor;
 	prepareCatalogColumnDescriptor(recordDescriptor);
@@ -375,6 +389,9 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 	{
 		attrs.push_back(vect[i].second);
 	}
+
+	HashMap.insert(pair<string, vector<Attribute>>(tableName, attrs));
+
 	free(value);
 	free(data);
 	return 0;
@@ -703,6 +720,25 @@ RC RelationManager::dropAttribute(const string &tableName, const string &attribu
 	rbfm->closeFile(filehandle);
 	rm_ScanIterator.close();
 	
+	auto ite = HashMap.find(tableName);
+	if (ite != HashMap.end())
+	{
+		for (auto i = ite->second.begin(); i != ite->second.end(); i++)
+		{
+			if (i->name == attributeName)
+			{
+				ite->second.erase(i);
+				break;
+			}
+		}
+	}
+	else
+	{
+		vector<Attribute> attrs;
+		if (getAttributes(tableName, attrs) == -1)
+			return -1;
+	}
+
 	return 0;
 }
 
@@ -734,7 +770,17 @@ RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 	rbfm->closeFile(table_filehandle);
 
 	free(data);
-
+	auto ite = HashMap.find(tableName);
+	if (ite != HashMap.end())
+	{
+		ite->second.push_back(attr);
+	}
+	else
+	{
+		vector<Attribute> attrs;
+		if (getAttributes(tableName, attrs) == -1)
+			return -1;
+	}
 	return 0;
 }
 

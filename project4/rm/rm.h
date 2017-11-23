@@ -6,6 +6,7 @@
 #include <vector>
 #include <cstring>
 #include <cmath>
+#include <unordered_map>
 #include <algorithm>
 #include "../rbf/rbfm.h"
 
@@ -33,7 +34,7 @@ class RelationManager
 {
 public:
   static RelationManager* instance();
-
+  unordered_map<string, vector<Attribute>> HashMap;
   RC createCatalog();
 
   RC deleteCatalog();
