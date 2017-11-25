@@ -6,6 +6,9 @@
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
 #include "../ix/ix.h"
+// #include <boost/algorithm/string.hpp>
+
+//#define DEBUG_QE
 
 #define QE_EOF (-1)  // end of the index scan
 
@@ -32,6 +35,9 @@ struct Condition {
     Value   rhsValue;       // right-hand side value if bRhsIsAttr = FALSE
 };
 
+string getOriginalAttrName(const string s);
+int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attributeName, void* value);
+bool compareCondition(const Attribute *attribute, const void* value, const Condition* condition);
 
 class Iterator {
     // All the relational operators and access methods are iterators.
@@ -198,9 +204,13 @@ class Filter : public Iterator {
         );
         ~Filter(){};
 
-        RC getNextTuple(void *data) {return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+
+    Iterator *input;
+    const Condition* condition;
+    vector<Attribute> attrs;
 };
 
 
@@ -288,5 +298,7 @@ class Aggregate : public Iterator {
         // output attrname = "MAX(rel.attr)"
         void getAttributes(vector<Attribute> &attrs) const{};
 };
+
+
 
 #endif
