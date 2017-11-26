@@ -6,9 +6,9 @@
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
 #include "../ix/ix.h"
-// #include <boost/algorithm/string.hpp>
+#include <limits>
 
-#define DEBUG_QE
+//#define DEBUG_QE
 
 #define QE_EOF (-1)  // end of the index scan
 
@@ -218,12 +218,15 @@ class Project : public Iterator {
     // Projection operator
     public:
         Project(Iterator *input,                    // Iterator of input R
-              const vector<string> &attrNames){};   // vector containing attribute names
+              const vector<string> &attrNames);   // vector containing attribute names
         ~Project(){};
 
-        RC getNextTuple(void *data) {return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+        Iterator *input;
+        vector<Attribute> attrs;
+        vector<Attribute> projectAttrs;
 };
 
 class BNLJoin : public Iterator {
@@ -281,7 +284,7 @@ class Aggregate : public Iterator {
         Aggregate(Iterator *input,          // Iterator of input R
                   Attribute aggAttr,        // The attribute over which we are computing an aggregate
                   AggregateOp op            // Aggregate operation
-        ){};
+        );
 
         // Optional for everyone: 5 extra-credit points
         // Group-based hash aggregation
@@ -289,14 +292,30 @@ class Aggregate : public Iterator {
                   Attribute aggAttr,           // The attribute over which we are computing an aggregate
                   Attribute groupAttr,         // The attribute over which we are grouping the tuples
                   AggregateOp op              // Aggregate operation
-        ){};
+        );
         ~Aggregate(){};
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // Please name the output attribute as aggregateOp(aggAttr)
         // E.g. Relation=rel, attribute=attr, aggregateOp=MAX
         // output attrname = "MAX(rel.attr)"
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+        string getOpName() const;
+        void getAggregateResults();
+
+        Iterator *input;
+        vector<Attribute> attrs;
+        string relation;
+        Attribute aggAttr;
+        Attribute groupAttr;
+        const AggregateOp *op;
+        bool hasGroupBy;
+        float sum = 0;
+        float count = 0;
+        float max = numeric_limits<float>::min();
+        float min = numeric_limits<float>::max();
+        int current = 0;
+        int total = 0;
 };
 
 
