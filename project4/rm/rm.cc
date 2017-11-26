@@ -1157,9 +1157,14 @@ RC RelationManager::indexScan(const string &tableName,
 {
 	string indexFileName = tableName + '_' + attributeName;
 	RC rc;
-	rc = IndexManager::instance()->openFile(indexFileName, rm_IndexScanIterator.ixfileHandle);
+	// printf("HERE\n");
+	if (rm_IndexScanIterator.ixfileHandle == NULL)
+		rm_IndexScanIterator.ixfileHandle = new IXFileHandle();
+	rc = IndexManager::instance()->openFile(indexFileName, *rm_IndexScanIterator.ixfileHandle);
+	// printf("[indexScan] return value from opening file: %d\n", rc);
 	if (rc != 0)
 		return rc;
+
 	rc = this->getAttributes(tableName, rm_IndexScanIterator.attrs);
 	if (rc != 0)
 		return rc;
@@ -1175,7 +1180,7 @@ RC RelationManager::indexScan(const string &tableName,
 
 	// if (rm_IndexScanIterator.ix_ScanIterator == NULL)
 	// 	rm_IndexScanIterator.ix_ScanIterator = new IX_ScanIterator();
-	rc = IndexManager::instance()->scan(rm_IndexScanIterator.ixfileHandle, rm_IndexScanIterator.attrs[i], lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_ScanIterator);
+	rc = IndexManager::instance()->scan(*rm_IndexScanIterator.ixfileHandle, rm_IndexScanIterator.attrs[i], lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_ScanIterator);
 	if (rc != 0)
 		return rc;
 	return 0;
@@ -1199,10 +1204,13 @@ RC RM_IndexScanIterator::getNextEntry(RID &rid, void *key)
 
 RM_IndexScanIterator::~RM_IndexScanIterator()
 {
-	// if(this->ix_ScanIterator != NULL)
-	// {
-	// 	delete this->ix_ScanIterator;
-	// 	this->ix_ScanIterator = NULL;
-	// }
+#ifdef DEBUG
+	printf("[~RM_IndexScanIterator]\n");
+#endif
+	if(this->ix_ScanIterator.ixfileHandle != NULL)
+	{
+		delete this->ix_ScanIterator.ixfileHandle;
+		this->ix_ScanIterator.ixfileHandle = NULL;
+	}
 }
 

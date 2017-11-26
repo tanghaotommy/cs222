@@ -9,7 +9,7 @@
 
 # define IX_EOF (-1)  // end of the index scan
 
-//# define DEBUG_IX
+// # define DEBUG_IX
 
 bool isLessThan(const Attribute *attribute, const void* compValue, const void* compKey);
 bool isLessAndEqualThan(const Attribute *attribute, const void* compValue, const void* compKey);

@@ -39,7 +39,7 @@ class RM_IndexScanIterator {
   RC close();                  // Terminate index scan
 
   IX_ScanIterator ix_ScanIterator;
-  IXFileHandle ixfileHandle;
+  IXFileHandle *ixfileHandle = NULL;
   vector<Attribute> attrs;
 };
 

@@ -32,9 +32,12 @@ RC IndexManager::destroyFile(const string &fileName)
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
 {
     RC rc = PagedFileManager::instance()->openFile(fileName, ixfileHandle.fileHandle);
+    // printf("return value of openFile%d\n", rc);
     if (rc == 0)
         ixfileHandle.fileHandle.collectCounterValues(ixfileHandle.ixReadPageCounter, 
             ixfileHandle.ixWritePageCounter, ixfileHandle.ixAppendPageCounter);
+    // printf("%d\n", ixfileHandle.fileHandle.getNumberOfPages());
+    // printf("THERE\n");
     return rc;
 }
 
