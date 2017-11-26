@@ -411,6 +411,7 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 		return -1;
 	}
 	rbfm->insertRecord(fileHandle, recordDescriptor, data, rid);
+	// IndexManager::instance()
 	if(rbfm->closeFile(fileHandle) != 0)
     {
         return -1;
@@ -1154,29 +1155,27 @@ RC RelationManager::indexScan(const string &tableName,
                       bool highKeyInclusive,
                       RM_IndexScanIterator &rm_IndexScanIterator)
 {
-	IXFileHandle ixfileHandle;
 	string indexFileName = tableName + '_' + attributeName;
 	RC rc;
-	rc = IndexManager::instance()->openFile(indexFileName, ixfileHandle);
+	rc = IndexManager::instance()->openFile(indexFileName, rm_IndexScanIterator.ixfileHandle);
 	if (rc != 0)
 		return rc;
-	vector<Attribute> recordDescriptor;
-	rc = this->getAttributes(tableName, recordDescriptor);
+	rc = this->getAttributes(tableName, rm_IndexScanIterator.attrs);
 	if (rc != 0)
 		return rc;
 
 	int i;
-	for (int i = 0; i < recordDescriptor.size(); ++i)
+	for (int i = 0; i < rm_IndexScanIterator.attrs.size(); ++i)
 	{
-		if (recordDescriptor[i].name == attributeName)
+		if (rm_IndexScanIterator.attrs[i].name == attributeName)
 			break;
 	}
-	if (i == recordDescriptor.size())
+	if (i == rm_IndexScanIterator.attrs.size())
 		return -1;
 
 	// if (rm_IndexScanIterator.ix_ScanIterator == NULL)
 	// 	rm_IndexScanIterator.ix_ScanIterator = new IX_ScanIterator();
-	rc = IndexManager::instance()->scan(ixfileHandle, recordDescriptor[i], lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_ScanIterator);
+	rc = IndexManager::instance()->scan(rm_IndexScanIterator.ixfileHandle, rm_IndexScanIterator.attrs[i], lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.ix_ScanIterator);
 	if (rc != 0)
 		return rc;
 	return 0;
@@ -1189,6 +1188,7 @@ RC RM_IndexScanIterator::close()
 	// 	this->ix_ScanIterator->close();
 	// 	this->ix_ScanIterator = NULL;
 	// }
+	this->attrs.clear();
 	return this->ix_ScanIterator.close();
 }
 

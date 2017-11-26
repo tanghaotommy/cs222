@@ -25,8 +25,7 @@ public:
   RC getNextTuple(RID &rid, void *data);
   RC close();
   RBFM_ScanIterator rbfm_ScanIterator;
-  FileHandle fileHandle;
-  
+  FileHandle fileHandle;  
 };
 
 // RM_IndexScanIterator is an iterator to go through index entries
@@ -40,6 +39,8 @@ class RM_IndexScanIterator {
   RC close();                  // Terminate index scan
 
   IX_ScanIterator ix_ScanIterator;
+  IXFileHandle ixfileHandle;
+  vector<Attribute> attrs;
 };
 
 // Relation Manager
