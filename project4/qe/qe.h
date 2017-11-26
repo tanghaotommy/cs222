@@ -8,7 +8,7 @@
 #include "../ix/ix.h"
 // #include <boost/algorithm/string.hpp>
 
-//#define DEBUG_QE
+#define DEBUG_QE
 
 #define QE_EOF (-1)  // end of the index scan
 
