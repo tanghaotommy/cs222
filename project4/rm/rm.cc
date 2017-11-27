@@ -411,6 +411,7 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 		return -1;
 	}
 	rbfm->insertRecord(fileHandle, recordDescriptor, data, rid);
+	this->insertIndex(tablename, rid);
 	// IndexManager::instance()
 	if(rbfm->closeFile(fileHandle) != 0)
     {
@@ -431,6 +432,7 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 	if(rbfm->deleteRecord(filehandle,descriptor,rid) != 0){
 		return -1;
 	}
+	this->deleteIndex(tablename, rid);
 	if(rbfm->closeFile(filehandle) != 0)
     {
         return -1;
@@ -456,6 +458,8 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
     {
         return -1;
     }
+    this->deleteIndex(tablename, rid);
+    this->insertIndex(tableName, rid);
     if(rbfm->closeFile(fileHandle) != 0)
     {
         return -1;
@@ -1138,13 +1142,31 @@ int RelationManager::isSystemTable(const string &tableName){
 RC RelationManager::createIndex(const string &tableName, const string &attributeName)
 {
 	string indexFileName = tableName + '_' + attributeName;
+	//TO-DO inseert entries into indexTable
 	return IndexManager::instance()->createFile(indexFileName);
 }
 
 RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
 {
 	string indexFileName = tableName + '_' + attributeName;
+	//TO-DO delete entries into indexTable
 	return IndexManager::instance()->destroyFile(indexFileName);
+}
+
+RC RelationManager::insertIndex(const string &tableName, const RID &rid)
+{
+	vector<string> indexAttrNames;
+	getIndexAttrNames(tablename);
+	for (int i = 0; i < count; ++i)
+	{
+		/* code */
+	}
+	return 0;
+}
+
+RC RelationManager::deleteIndex(const string &tableName, const RID &rid)
+{
+	return 0;
 }
 
 RC RelationManager::indexScan(const string &tableName,

@@ -98,6 +98,9 @@ public:
 
   RC destroyIndex(const string &tableName, const string &attributeName);
 
+  RC insertIndex(const string &tableName, const RID &rid);
+  RC deleteIndex(const string &tableName, const RID &rid);
+
   // indexScan returns an iterator to allow the caller to go through qualified entries in index
   RC indexScan(const string &tableName,
                         const string &attributeName,
