@@ -1010,6 +1010,8 @@ RC RBFM_ScanIterator::close()
 
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 {
+    if (fileHandle->getNumberOfPages() <= 0)
+        return RBFM_EOF;
     void * page = malloc(PAGE_SIZE);
     fileHandle->readPage(cPage, page);
     int nSlots;
