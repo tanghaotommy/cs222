@@ -484,7 +484,6 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();	
 	FileHandle fileHandle;
-		cout<<"[read tuple] attributes size";
     if(rbfm->openFile(tableName, fileHandle) != 0)
     {
         return -1;
@@ -495,7 +494,7 @@ RC RelationManager::readTuple(const string &tableName, const RID &rid, void *dat
     {
         return -1;
     }
-	cout<<"[read tuple] attributes size"<<attr.size()<<endl;
+	// cout<<"[read tuple] attributes size"<<attr.size()<<endl;
     if(rbfm->readRecord(fileHandle, attr, rid, data) != 0)
     {
         return -1;
@@ -1185,7 +1184,7 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 	attr.type = TypeVarChar;
 	attr.length = indexFileName.size() + sizeof(int);
     attrs.push_back(attr);
-	cout<<"[create index insert data] ";
+	// cout<<"[create index insert data] ";
 	printTuple(attrs,data);
 	RC rc = insertTuple("Index", data, rid);
 	// cout<<"[create index] rc:"<<rc<<endl;
@@ -1286,14 +1285,14 @@ RC RelationManager::insertIndex(const string &tableName, const vector<Attribute>
 			return -1;
 		}
 		void *key = malloc(length);
-		cout<<"[insert index] key length:"<<length<<" index:"<<index<<endl;
+		// cout<<"[insert index] key length:"<<length<<" index:"<<index<<endl;
 		int keyValue;
 		memcpy(key, (char *)temp, length);
 		memcpy(&keyValue, (char *)temp, length);
 		Attribute att = recordDescriptor[index];
 		att.name = tableName + "_" + recordDescriptor[index].name;
-		cout<<"[insert index] insert table "<<att.name<<endl;
-		cout<<"[insert index] insert key "<<keyValue<<" type:"<<att.type<<" atribute name:"<<att.name<<endl;
+		// cout<<"[insert index] insert table "<<att.name<<endl;
+		// cout<<"[insert index] insert key "<<keyValue<<" type:"<<att.type<<" atribute name:"<<att.name<<endl;
 
 		IXFileHandle ixfileHandle;
 		IndexManager::instance()->openFile(att.name, ixfileHandle);
@@ -1379,7 +1378,7 @@ RC RelationManager::getIndexAttrNames(const string &tableName, vector<string>& i
 		indexFileName_c[indexFileNameLength] = '\0';
 		indexFileName = string(indexFileName_c);
 		//string tableName_indexFileName = tableName + "_" + indexFileName;
-		cout<<"[get key attribute name] "<<indexFileName<<endl;
+		// cout<<"[get key attribute name] "<<indexFileName<<endl;
 		indexAttrNames.push_back(indexFileName);
 	}
 
@@ -1404,7 +1403,7 @@ RC RelationManager::deleteIndex(const string &tableName, const vector<Attribute>
 		if(index < 0)
 		{
 			cout<<"[insert index] Can't find that index"<<endl;
-			//return -1;
+			return -1;
 		}
 		void *key = malloc(length);
 		memcpy(key, (char *)temp, length);
