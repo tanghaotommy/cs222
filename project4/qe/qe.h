@@ -8,7 +8,7 @@
 #include "../ix/ix.h"
 #include <limits>
 
-//#define DEBUG_QE
+#define DEBUG_QE
 
 #define QE_EOF (-1)  // end of the index scan
 
@@ -308,7 +308,7 @@ class Aggregate : public Iterator {
         string relation;
         Attribute aggAttr;
         Attribute groupAttr;
-        const AggregateOp *op;
+        AggregateOp op;
         bool hasGroupBy;
         float sum = 0;
         float count = 0;

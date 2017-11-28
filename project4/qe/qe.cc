@@ -209,7 +209,7 @@ Aggregate::Aggregate(Iterator *input, Attribute aggAttr, AggregateOp op)
 	this->hasGroupBy = false;
 	this->input = input;
 	input->getAttributes(this->attrs);
-	this->op = &op;
+	this->op = op;
 	this->aggAttr = aggAttr;
 	this->total = 1;
 
@@ -288,6 +288,7 @@ void Aggregate::getAggregateResults()
 		}
 		this->count++;
 		this->sum += v;
+		cout<<"v: "<<v<<"max:" << this->max<< "isLarger: "<<(v > this->max)<<endl;
 		if (v > this->max)
 			this->max = v;
 		if (v < this->min)
@@ -313,7 +314,8 @@ RC Aggregate::getNextTuple(void *data)
     }
 
     float res;
-	switch (*(this->op))
+	cout<<"[getOpName] "<<getOpName()<<endl;
+	switch (this->op)
 	{
 		case MIN:
 			res = this->min;
@@ -363,7 +365,7 @@ void Aggregate::getAttributes(vector<Attribute> &attrs) const
 
 string Aggregate::getOpName() const
 {
-	switch (*(this->op))
+	switch (this->op)
 	{
 		case MIN:
 			return "MIN";

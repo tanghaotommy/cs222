@@ -16,6 +16,8 @@ using namespace std;
 # define RM_EOF (-1)  // end of a scan operator
 
 // RM_ScanIterator is an iteratr to go through tuples
+int getKey(const string &tableName,const vector<Attribute> recordDescriptor, const void *data, string keyName, void *key, int &length);
+
 class RM_ScanIterator {
 public:
   RM_ScanIterator() {};
@@ -85,6 +87,7 @@ public:
   RC getAllAttributes(const string &tableName, vector<Attribute> &attrs);
   RC removeNonExisted(const string &tableName, void* data);
   int getSizeOfdata(vector<Attribute> &attr, void* data);
+  RC getIndexAttrNames(const string &tableName, vector<string>& indexAttrNames);
   // Scan returns an iterator to allow the caller to go through the results one by one.
   // Do not store entire results in the scan iterator.
   RC scan(const string &tableName,
@@ -98,8 +101,8 @@ public:
 
   RC destroyIndex(const string &tableName, const string &attributeName);
 
-  RC insertIndex(const string &tableName, const RID &rid);
-  RC deleteIndex(const string &tableName, const RID &rid);
+  RC insertIndex(const string &tableName, const vector<Attribute> recordDescriptor, const void *data, const RID &rid);
+  RC deleteIndex(const string &tableName, const vector<Attribute> recordDescriptor, const void *data, const RID &rid);
 
   // indexScan returns an iterator to allow the caller to go through qualified entries in index
   RC indexScan(const string &tableName,
