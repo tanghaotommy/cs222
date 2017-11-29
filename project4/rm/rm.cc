@@ -1185,7 +1185,7 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 	attr.length = indexFileName.size() + sizeof(int);
     attrs.push_back(attr);
 	// cout<<"[create index insert data] ";
-	printTuple(attrs,data);
+	// printTuple(attrs,data);
 	RC rc = insertTuple("Index", data, rid);
 	// cout<<"[create index] rc:"<<rc<<endl;
 	// void *d = malloc(1 + indexFileName.size() + 2 * sizeof(int));
