@@ -374,15 +374,15 @@ void Aggregate::getAggregateResults()
 			{
 				case TypeInt:
 					this->intIterator = this->intMap.begin();
-					this->total = intMap.bucket_count();
+					this->total = intMap.size();
 					break;
 				case TypeReal:
 					this->floatIterator = this->floatMap.begin();
-					this->total = floatMap.bucket_count();
+					this->total = floatMap.size();
 					break;
 				case TypeVarChar:
 					this->stringIterator = this->stringMap.begin();
-					this->total = stringMap.bucket_count();
+					this->total = stringMap.size();
 					break;
 			}
 			free(key_value);
@@ -404,6 +404,7 @@ void Aggregate::getAggregateResults()
 
 RC Aggregate::getNextTuple(void *data)
 {
+	printf("total number of keys: %d\n", this->total);
 	if (current >= total)
 		return QE_EOF;
 
