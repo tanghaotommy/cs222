@@ -7,8 +7,9 @@
 #include "../rm/rm.h"
 #include "../ix/ix.h"
 #include <limits>
+#include <unordered_map>
 
-#define DEBUG_QE
+//#define DEBUG_QE
 
 #define QE_EOF (-1)  // end of the index scan
 
@@ -38,6 +39,14 @@ struct Condition {
 string getOriginalAttrName(const string s);
 int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attributeName, void* value);
 bool compareCondition(const Attribute *attribute, const void* value, const Condition* condition);
+
+struct GroupAttr
+{
+    float sum = 0;
+    float count = 0;
+    float max = numeric_limits<float>::min();
+    float min = numeric_limits<float>::max();
+};
 
 class Iterator {
     // All the relational operators and access methods are iterators.
@@ -309,13 +318,21 @@ class Aggregate : public Iterator {
         Attribute aggAttr;
         Attribute groupAttr;
         AggregateOp op;
-        bool hasGroupBy;
+        bool hasGroupBy = false;
         float sum = 0;
         float count = 0;
         float max = numeric_limits<float>::min();
         float min = numeric_limits<float>::max();
         int current = 0;
         int total = 0;
+
+        unordered_map<string, GroupAttr> stringMap;
+        unordered_map<float, GroupAttr> floatMap;
+        unordered_map<int, GroupAttr> intMap;
+
+        unordered_map<string, GroupAttr>::iterator stringIterator;
+        unordered_map<float, GroupAttr>::iterator floatIterator;
+        unordered_map<int, GroupAttr>::iterator intIterator;
 };
 
 

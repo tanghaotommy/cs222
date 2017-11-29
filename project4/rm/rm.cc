@@ -1167,12 +1167,12 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 	void *data = malloc(1 + indexFileName.size() + 2 * sizeof(int));
 	memcpy(data, nullsIndicator, 1);
 	offset += 1;
-	memcpy(data + offset, &tableId, sizeof(int));
+	memcpy((char *)data + offset, &tableId, sizeof(int));
 	offset += sizeof(int);
 	int length = indexFileName.size();
-	memcpy(data + offset, &length, sizeof(int));
+	memcpy((char *)data + offset, &length, sizeof(int));
 	offset += sizeof(int);
-	memcpy(data + offset, indexFileName.c_str(), length);
+	memcpy((char *)data + offset, indexFileName.c_str(), length);
 
 	vector<Attribute> attrs;
 	Attribute attr;
@@ -1185,7 +1185,7 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 	attr.length = indexFileName.size() + sizeof(int);
     attrs.push_back(attr);
 	// cout<<"[create index insert data] ";
-	printTuple(attrs,data);
+	// printTuple(attrs,data);
 	RC rc = insertTuple("Index", data, rid);
 	// cout<<"[create index] rc:"<<rc<<endl;
 	// void *d = malloc(1 + indexFileName.size() + 2 * sizeof(int));
@@ -1280,8 +1280,8 @@ RC RelationManager::insertIndex(const string &tableName, const vector<Attribute>
 		
 		if(index < 0)
 		{
-			cout<<"[insert index] Can't find that index"<<endl;
-			cout<<"[insert index] "<<indexAttrNames[i]<<endl;
+			// cout<<"[insert index] Can't find that index"<<endl;
+			// cout<<"[insert index] "<<indexAttrNames[i]<<endl;
 			return -1;
 		}
 		void *key = malloc(length);
@@ -1402,7 +1402,7 @@ RC RelationManager::deleteIndex(const string &tableName, const vector<Attribute>
 		
 		if(index < 0)
 		{
-			cout<<"[insert index] Can't find that index"<<endl;
+			// cout<<"[insert index] Can't find that index"<<endl;
 			return -1;
 		}
 		void *key = malloc(length);

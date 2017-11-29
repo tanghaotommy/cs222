@@ -206,8 +206,8 @@ RC Project::getNextTuple(void *data)
 
 Aggregate::Aggregate(Iterator *input, Attribute aggAttr, AggregateOp op)
 {
-	this->hasGroupBy = false;
 	this->input = input;
+	this->hasGroupBy = false;
 	input->getAttributes(this->attrs);
 	this->op = op;
 	this->aggAttr = aggAttr;
@@ -231,29 +231,32 @@ Aggregate::Aggregate(Iterator *input, Attribute aggAttr, AggregateOp op)
 
 Aggregate::Aggregate(Iterator *input, Attribute aggAttr, Attribute groupAttr, AggregateOp op)
 {
-	Aggregate(input, aggAttr, op);
+	this->input = input;
 	this->hasGroupBy = true;
+	input->getAttributes(this->attrs);
+	this->op = op;
+	this->aggAttr = aggAttr;
+	this->total = 1;
+
+	for (int i = 0; i < this->attrs.size(); ++i)
+	{
+		int pos = attrs[i].name.find('.');
+		string attributeName = attrs[i].name.substr(pos + 1, attrs[i].name.length() - pos + 1);
+		this->relation = attrs[i].name.substr(0, pos);
+		this->attrs[i].name = attributeName;
+	}
+#ifdef DEBUG_QE
+	printf("[Aggregate::Aggregate] Relation attirbute prefix: %s\n", this->relation.c_str());
+#endif
+	int pos = aggAttr.name.find('.');
+	this->aggAttr.name = aggAttr.name.substr(pos + 1, aggAttr.name.length() - pos + 1);
+
 	this->groupAttr = groupAttr;
-// 	this->input = input;
-// 	input->getAttributes(this->attrs);
-// 	this->op = &op;
 
-// 	for (int i = 0; i < this->attrs.size(); ++i)
-// 	{
-// 		int pos = attrs[i].name.find('.');
-// 		string attributeName = attrs[i].name.substr(pos + 1, attrs[i].name.length() - pos + 1);
-// 		this->relation = attrs[i].name.substr(0, pos);
-// 		this->attrs[i].name = attributeName;
-// 	}
-// #ifdef DEBUG_QE
-// 	printf("[Aggregate::Aggregate] Relation attirbute prefix: %s\n", this->relation);
-// #endif
-// 	int pos = aggAttr.name.find('.');
-// 	this->aggAttr = aggAttr.name.substr(pos + 1, aggAttr.name.length() - pos + 1);
-
-	int pos;
 	pos = groupAttr.name.find('.');
 	this->groupAttr.name = groupAttr.name.substr(pos + 1, groupAttr.name.length() - pos + 1);
+
+	getAggregateResults();
 }
 
 void Aggregate::getAggregateResults()
@@ -286,15 +289,116 @@ void Aggregate::getAggregateResults()
 				memcpy(&v, value, sizeof(TypeReal));
 				break;
 		}
-		this->count++;
-		this->sum += v;
-		cout<<"v: "<<v<<"max:" << this->max<< "isLarger: "<<(v > this->max)<<endl;
-		if (v > this->max)
-			this->max = v;
-		if (v < this->min)
-			this->min = v;
+
+		if (this->hasGroupBy)
+		{
+			void *key_value = malloc(PAGE_SIZE);
+			rc = getValueOfAttrByName(data, this->attrs, this->groupAttr.name, key_value);
+
+			switch(this->groupAttr.type)
+			{
+				case TypeInt:
+				{
+					int intKey;
+					memcpy(&intKey, key_value, sizeof(int));
+
+					unordered_map<int, GroupAttr>::iterator gotInt = this->intMap.find (intKey);
+					if (gotInt == this->intMap.end())
+					{
+						GroupAttr temp;
+						temp.sum += v;
+						temp.count++;
+						intMap[intKey] = temp;
+					}
+					else
+					{
+						gotInt->second.sum += v;
+						gotInt->second.count++;
+						gotInt->second.max = v > (gotInt->second.max) ? v : gotInt->second.max;
+						gotInt->second.min = v < (gotInt->second.min) ? v : gotInt->second.min;
+					}
+					break;
+				}
+				case TypeReal:
+				{
+					float floatKey;
+					memcpy(&floatKey, key_value, sizeof(float));
+
+					unordered_map<float, GroupAttr>::iterator gotFloat = this->floatMap.find (floatKey);
+					if (gotFloat == this->floatMap.end())
+					{
+						GroupAttr temp;
+						floatMap[floatKey] = temp;
+						temp.sum += v;
+						temp.count++;
+					}
+					else
+					{
+						gotFloat->second.sum += v;
+						gotFloat->second.count++;
+						gotFloat->second.max = v > (gotFloat->second.max) ? v : gotFloat->second.max;
+						gotFloat->second.min = v < (gotFloat->second.min) ? v : gotFloat->second.min;
+					}
+					break;
+				}
+				case TypeVarChar:
+				{
+					int nameLength;
+					char* key_c = (char *) malloc(nameLength + 1);
+					memcpy(&nameLength, key_value, sizeof(int));
+					memcpy(key_c, key_value, nameLength);
+
+					key_c[nameLength] = '\0';
+					string stringKey = string(key_c);
+
+					unordered_map<string, GroupAttr>::iterator gotString = this->stringMap.find (stringKey);
+					if (gotString == this->stringMap.end())
+					{
+						GroupAttr temp;
+						stringMap[stringKey] = temp;
+						temp.sum += v;
+						temp.count++;
+					}
+					else
+					{
+						gotString->second.sum += v;
+						gotString->second.count++;
+						gotString->second.max = v > (gotString->second.max) ? v : gotString->second.max;
+						gotString->second.min = v < (gotString->second.min) ? v : gotString->second.min;
+					}
+					break;
+				}
+			}
+
+			switch(this->groupAttr.type)
+			{
+				case TypeInt:
+					this->intIterator = this->intMap.begin();
+					this->total = intMap.bucket_count();
+					break;
+				case TypeReal:
+					this->floatIterator = this->floatMap.begin();
+					this->total = floatMap.bucket_count();
+					break;
+				case TypeVarChar:
+					this->stringIterator = this->stringMap.begin();
+					this->total = stringMap.bucket_count();
+					break;
+			}
+			free(key_value);
+		} 
+		else
+		{
+			this->count++;
+			this->sum += v;
+			if (v > this->max)
+				this->max = v;
+			if (v < this->min)
+				this->min = v;
+		}
 		free(value);
 	}
+
 	free(data);
 }
 
@@ -308,33 +412,81 @@ RC Aggregate::getNextTuple(void *data)
     unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
     nullFieldsIndicator[0] = 0;
     int offset = nullFieldsIndicatorActualSize;
+    float res;
+
     if (hasGroupBy)
     {
-    	
-    }
+    	GroupAttr groupRes;
+    	switch(this->groupAttr.type)
+		{
+			case TypeInt:
+				memcpy((char *)data + offset, &(intIterator->first), sizeof(int));
+				offset += sizeof(int);
+				groupRes = intIterator->second;
+				intIterator++;
+				break;
+			case TypeReal:
+				memcpy((char *)data + offset, &(floatIterator->first), sizeof(float));
+				offset += sizeof(float);
+				groupRes = floatIterator->second;
+				floatIterator++;
+				break;
+			case TypeVarChar:
+				int nameLength = stringIterator->first.length();
+				memcpy((char *)data + offset, &nameLength, sizeof(int));
+				offset += sizeof(int);
+				memcpy((char *)data + offset, &(stringIterator->first), sizeof(int));
+				offset += sizeof(nameLength);
+				groupRes = stringIterator->second;
+				stringIterator++;
+				break;
+		}
 
-    float res;
-	cout<<"[getOpName] "<<getOpName()<<endl;
-	switch (this->op)
-	{
-		case MIN:
-			res = this->min;
-			break;
-		case MAX:
-			res = this->max;
-			break;
-		case COUNT:
-			res = this->count;
-			break;
-		case AVG:
-			res = this->sum / this->count;
-			break;
-		case SUM:
-			return res = this->sum;
-			break;
+		cout<<"[getOpName] "<<getOpName()<<endl;
+		switch (this->op)
+		{
+			case MIN:
+				res = groupRes.min;
+				break;
+			case MAX:
+				res = groupRes.max;
+				break;
+			case COUNT:
+				res = groupRes.count;
+				break;
+			case AVG:
+				res = groupRes.sum / groupRes.count;
+				break;
+			case SUM:
+				res = groupRes.sum;
+				break;
+    	} 
+    }
+    else 
+    {
+		cout<<"[getOpName] "<<getOpName()<<endl;
+		switch (this->op)
+		{
+			case MIN:
+				res = this->min;
+				break;
+			case MAX:
+				res = this->max;
+				break;
+			case COUNT:
+				res = this->count;
+				break;
+			case AVG:
+				res = this->sum / this->count;
+				break;
+			case SUM:
+				res = this->sum;
+				break;
+		}
 	}
 
-	memcpy((char*) data + offset, &res, sizeof(TypeReal));
+	memcpy((char*) data + offset, &res, sizeof(float));
+	offset += sizeof(float);
     current++;
 
     memcpy(data, nullFieldsIndicator, nullFieldsIndicatorActualSize);
@@ -400,7 +552,7 @@ int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attr
 		return -2;
 
 #ifdef DEBUG_QE
-		printf("[getValueOfAttrByName] position of the attribute: %d\n", pos);
+		printf("[getValueOfAttrByName] position of the attribute %s: %d\n", attributeName.c_str(), pos);
 #endif
 
 	int nFields = attrs.size();
