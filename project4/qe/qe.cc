@@ -442,7 +442,6 @@ RC Aggregate::getNextTuple(void *data)
 				break;
 		}
 
-		cout<<"[getOpName] "<<getOpName()<<endl;
 		switch (this->op)
 		{
 			case MIN:
@@ -464,7 +463,6 @@ RC Aggregate::getNextTuple(void *data)
     }
     else 
     {
-		cout<<"[getOpName] "<<getOpName()<<endl;
 		switch (this->op)
 		{
 			case MIN:
