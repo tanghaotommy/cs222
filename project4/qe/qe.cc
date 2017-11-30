@@ -573,12 +573,24 @@ RC INLJoin::getNextTuple(void *data)
 	void *rightData = malloc(PAGE_SIZE);
 	while(1)
 	{
+		if (this->leftData == NULL)
+		{
+			printf("Loading left\n");
+			this->leftData = malloc(PAGE_SIZE);
+			if (this->leftIn->getNextTuple(this->leftData) == QE_EOF)
+				return QE_EOF;
+		}
+
 		if (this->rightIn->getNextTuple(rightData) != QE_EOF)
 		{
+#ifdef DEBUG_QE
+			RelationManager::instance()->printTuple(this->rightAttributes, rightData);
+#endif
 			bool can = canJoin(this->leftData, rightData);
 			if (can)
 			{
 				concatenateLeftAndRight(this->leftData, rightData, data);
+				free(rightData);
 				return 0;
 			}
 			else
@@ -588,11 +600,15 @@ RC INLJoin::getNextTuple(void *data)
 		{
 			if (this->leftIn->getNextTuple(this->leftData) != QE_EOF)
 			{
+#ifdef DEBUG_QE
+				RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
+#endif
 				this->rightIn->setIterator(NULL, NULL, true, true);
 				bool can = canJoin(this->leftData, rightData);
 				if (can)
 				{
 					concatenateLeftAndRight(this->leftData, rightData, data);
+					free(rightData);
 					return 0;
 				}
 				else
@@ -605,6 +621,7 @@ RC INLJoin::getNextTuple(void *data)
 			}
 		}
 	}
+	free(rightData);
 }
 
 bool INLJoin::canJoin(const void* leftData, const void* rightData)
