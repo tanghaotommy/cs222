@@ -575,15 +575,21 @@ RC INLJoin::getNextTuple(void *data)
 	{
 		if (this->leftData == NULL)
 		{
-			printf("Loading left\n");
+#ifdef DEBUG_QE
+			printf("[INLJoin::getNextTuple] Loading tuple from left input\n");
+#endif
 			this->leftData = malloc(PAGE_SIZE);
 			if (this->leftIn->getNextTuple(this->leftData) == QE_EOF)
 				return QE_EOF;
+#ifdef DEBUG_QE
+			RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
+#endif
 		}
 
 		if (this->rightIn->getNextTuple(rightData) != QE_EOF)
 		{
 #ifdef DEBUG_QE
+			printf("[INLJoin::getNextTuple] Loading tuple from right input\n");
 			RelationManager::instance()->printTuple(this->rightAttributes, rightData);
 #endif
 			bool can = canJoin(this->leftData, rightData);
@@ -601,6 +607,7 @@ RC INLJoin::getNextTuple(void *data)
 			if (this->leftIn->getNextTuple(this->leftData) != QE_EOF)
 			{
 #ifdef DEBUG_QE
+				printf("[INLJoin::getNextTuple] Loading tuple from left input\n");
 				RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
 #endif
 				this->rightIn->setIterator(NULL, NULL, true, true);
@@ -658,10 +665,12 @@ void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightDat
 	int nRightFields = this->rightAttributes.size();
     int nullRightFieldsIndicatorActualSize = ceil((double) nRightFields / CHAR_BIT);
     unsigned char *nullRightFieldsIndicator = (unsigned char *)malloc(nullRightFieldsIndicatorActualSize);
+    memcpy(nullRightFieldsIndicator, rightData, nullRightFieldsIndicatorActualSize);
 
     int nFields = this->leftAttributes.size() + this->rightAttributes.size();
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
     unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
+    memcpy(nullLeftFieldsIndicator, leftData, nullLeftFieldsIndicatorActualSize);
 
     int newOffset = nullFieldsIndicatorActualSize;
     int leftOffset = nullLeftFieldsIndicatorActualSize;
@@ -686,7 +695,7 @@ void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightDat
     		int nByte = i / 8;
     		int nBit = i % 8;
     		int nRightByte = (i - nLeftFields) / 8;
-    		int nRightBit = (i - nRightFields) % 8;
+    		int nRightBit = (i - nLeftFields) % 8;
     		bool nullBit = nullRightFieldsIndicator[nRightByte] & (1 << (7 - nRightBit));
 
     		if (nullBit)
