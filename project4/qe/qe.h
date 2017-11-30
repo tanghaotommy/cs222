@@ -39,6 +39,7 @@ struct Condition {
 string getOriginalAttrName(const string s);
 int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attributeName, void* value);
 bool compareCondition(const Attribute *attribute, const void* value, const Condition* condition);
+void copyAttribute(const void *from, int &fromOffset, void* to, int &toOffset, const Attribute &attr);
 
 struct GroupAttr
 {
@@ -261,12 +262,23 @@ class INLJoin : public Iterator {
         INLJoin(Iterator *leftIn,           // Iterator of input R
                IndexScan *rightIn,          // IndexScan Iterator of input S
                const Condition &condition   // Join condition
-        ){};
-        ~INLJoin(){};
+        );
+        ~INLJoin();
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+        void concatenateLeftAndRight(const void* leftData, const void* rightData, void* data);
+        bool canJoin(const void* leftData, const void* rightData);
+
+        vector<Attribute> leftAttributes;
+        vector<Attribute> rightAttributes;
+        Iterator *leftIn;
+        IndexScan *rightIn;
+        string leftTable;
+        string rightTable;
+        void *leftData = NULL;
+        const Condition* condition;
 };
 
 // Optional for everyone. 10 extra-credit points

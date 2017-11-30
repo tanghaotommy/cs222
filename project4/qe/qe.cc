@@ -536,6 +536,212 @@ string Aggregate::getOpName() const
 	}
 }
 
+
+INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition)
+{
+	this->condition = &condition;
+	this->leftIn = leftIn;
+	this->rightIn = rightIn;
+	leftIn->getAttributes(this->leftAttributes);
+
+	for (int i = 0; i < this->leftAttributes.size(); ++i)
+	{
+		int pos = this->leftAttributes[i].name.find('.');
+		string attributeName = this->leftAttributes[i].name.substr(pos + 1, this->leftAttributes[i].name.length() - pos + 1);
+		this->leftTable = this->leftAttributes[i].name.substr(0, pos);
+		this->leftAttributes[i].name = attributeName;
+	}
+
+	rightIn->getAttributes(this->rightAttributes);
+
+	for (int i = 0; i < this->rightAttributes.size(); ++i)
+	{
+		int pos = this->rightAttributes[i].name.find('.');
+		string attributeName = this->rightAttributes[i].name.substr(pos + 1, this->rightAttributes[i].name.length() - pos + 1);
+		this->rightTable = this->rightAttributes[i].name.substr(0, pos);
+		this->rightAttributes[i].name = attributeName;
+	}
+}
+INLJoin::~INLJoin()
+{
+	if (leftData != NULL)
+		free(leftData);
+}
+
+RC INLJoin::getNextTuple(void *data)
+{
+	void *rightData = malloc(PAGE_SIZE);
+	while(1)
+	{
+		if (this->rightIn->getNextTuple(rightData) != QE_EOF)
+		{
+			bool can = canJoin(this->leftData, rightData);
+			if (can)
+			{
+				concatenateLeftAndRight(this->leftData, rightData, data);
+				return 0;
+			}
+			else
+				continue;
+		} 
+		else
+		{
+			if (this->leftIn->getNextTuple(this->leftData) != QE_EOF)
+			{
+				this->rightIn->setIterator(NULL, NULL, true, true);
+				bool can = canJoin(this->leftData, rightData);
+				if (can)
+				{
+					concatenateLeftAndRight(this->leftData, rightData, data);
+					return 0;
+				}
+				else
+					continue;
+
+			} 
+			else
+			{
+				return QE_EOF;
+			}
+		}
+	}
+}
+
+bool INLJoin::canJoin(const void* leftData, const void* rightData)
+{
+	if (this->condition->bRhsIsAttr)
+	{
+		string leftAttrName = getOriginalAttrName(this->condition->lhsAttr);
+		string rightAttrName = getOriginalAttrName(this->condition->rhsAttr);
+		void *leftValue = malloc(PAGE_SIZE);
+		void *rightValue = malloc(PAGE_SIZE);
+
+		int leftPos = getValueOfAttrByName(leftData, this->leftAttributes, leftAttrName, leftValue);
+		int rightPos = getValueOfAttrByName(rightData, this->rightAttributes, rightAttrName, rightValue);
+
+		bool res;
+		if (isEqual(leftValue, rightValue, &this->leftAttributes[leftPos]))
+			res = true;
+		else
+			res = false;
+
+		free(leftValue);
+		free(rightValue);
+		return res;
+	}
+	return false;
+}
+
+void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightData, void* data)
+{
+	int nLeftFields = this->leftAttributes.size();
+    int nullLeftFieldsIndicatorActualSize = ceil((double) nLeftFields / CHAR_BIT);
+    unsigned char *nullLeftFieldsIndicator = (unsigned char *)malloc(nullLeftFieldsIndicatorActualSize);
+
+	int nRightFields = this->rightAttributes.size();
+    int nullRightFieldsIndicatorActualSize = ceil((double) nRightFields / CHAR_BIT);
+    unsigned char *nullRightFieldsIndicator = (unsigned char *)malloc(nullRightFieldsIndicatorActualSize);
+
+    int nFields = this->leftAttributes.size() + this->rightAttributes.size();
+    int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
+    unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
+
+    int newOffset = nullFieldsIndicatorActualSize;
+    int leftOffset = nullLeftFieldsIndicatorActualSize;
+    int rightOffset = nullRightFieldsIndicatorActualSize;
+
+    for (int i = 0; i < nFields; ++i)
+    {
+    	if (i < nLeftFields)
+    	{
+    		int nByte = i / 8;
+	        int nBit = i % 8;
+	        bool nullBit = nullLeftFieldsIndicator[nByte] & (1 << (7 - nBit));
+	        if (nullBit)
+	        	nullFieldsIndicator[nByte] |= (1 << (7 - nBit));
+	        else
+	        {
+	        	copyAttribute(leftData, leftOffset, data, newOffset, this->leftAttributes[i]);
+	        }
+    	}
+    	else
+    	{
+    		int nByte = i / 8;
+    		int nBit = i % 8;
+    		int nRightByte = (i - nLeftFields) / 8;
+    		int nRightBit = (i - nRightFields) % 8;
+    		bool nullBit = nullRightFieldsIndicator[nRightByte] & (1 << (7 - nRightBit));
+
+    		if (nullBit)
+	        	nullFieldsIndicator[nByte] |= (1 << (7 - nBit));
+	        else
+	        {
+	        	copyAttribute(rightData, rightOffset, data, newOffset, this->rightAttributes[i - nLeftFields]);
+	        }
+    	}
+    }
+
+    memcpy(data, nullFieldsIndicator, nullFieldsIndicatorActualSize);
+    free(nullLeftFieldsIndicator);
+    free(nullRightFieldsIndicator);
+    free(nullFieldsIndicator);
+}
+
+void copyAttribute(const void *from, int &fromOffset, void* to, int &toOffset, const Attribute &attr)
+{
+	switch(attr.type)
+	{
+		case TypeInt:
+			memcpy((char *)to + toOffset, (char *)from + fromOffset, attr.length);
+			fromOffset += attr.length;
+			toOffset += attr.length;
+			break;
+		case TypeReal:
+			memcpy((char *)to + toOffset, (char *)from + fromOffset, attr.length);
+			fromOffset += attr.length;
+			toOffset += attr.length;
+			break;
+		case TypeVarChar:
+			int nameLength;
+			memcpy(&nameLength, (char *)from + fromOffset, sizeof(int));
+			memcpy((char *)to + toOffset, &nameLength, sizeof(int));
+			fromOffset += attr.length;
+			toOffset += attr.length;
+			memcpy((char *)to + toOffset, (char *)from + fromOffset, nameLength);
+			fromOffset += nameLength;
+			toOffset += nameLength;
+			break;
+	}
+}
+
+void INLJoin::getAttributes(vector<Attribute> &attrs) const
+{
+	attrs.clear();
+    attrs = this->leftAttributes;
+    unsigned i;
+
+    // For attribute in vector<Attribute>, name it as rel.attr
+    for(i = 0; i < attrs.size(); ++i)
+    {
+        string tmp = this->leftTable;
+        tmp += ".";
+        tmp += attrs.at(i).name;
+        attrs.at(i).name = tmp;
+    }
+
+    Attribute t;
+    for(i = 0; i < this->rightAttributes.size(); ++i)
+    {
+        string tmp = this->rightTable;
+        tmp += ".";
+        tmp += this->rightAttributes.at(i).name;
+
+        t = this->rightAttributes[i];
+        t.name = tmp;
+        attrs.push_back(t);
+    }
+}
+
 int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attributeName, void* value)
 {
 	int pos;
