@@ -595,6 +595,10 @@ RC INLJoin::getNextTuple(void *data)
 			bool can = canJoin(this->leftData, rightData);
 			if (can)
 			{
+#ifdef DEBUG_QE
+        	                printf("[INLJoin::getNextTuple] Concatenating left and right, left data is: \n");
+      	          	        RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
+#endif
 				concatenateLeftAndRight(this->leftData, rightData, data);
 				free(rightData);
 				return 0;
@@ -611,16 +615,7 @@ RC INLJoin::getNextTuple(void *data)
 				RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
 #endif
 				this->rightIn->setIterator(NULL, NULL, true, true);
-				bool can = canJoin(this->leftData, rightData);
-				if (can)
-				{
-					concatenateLeftAndRight(this->leftData, rightData, data);
-					free(rightData);
-					return 0;
-				}
-				else
-					continue;
-
+				continue;
 			} 
 			else
 			{
@@ -658,9 +653,15 @@ bool INLJoin::canJoin(const void* leftData, const void* rightData)
 
 void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightData, void* data)
 {
+#ifdef DEBUG_QE
+    printf("[concatenateLeftAndRight] concatenate between:\n");
+    RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
+    RelationManager::instance()->printTuple(this->rightAttributes, rightData);
+#endif
 	int nLeftFields = this->leftAttributes.size();
     int nullLeftFieldsIndicatorActualSize = ceil((double) nLeftFields / CHAR_BIT);
     unsigned char *nullLeftFieldsIndicator = (unsigned char *)malloc(nullLeftFieldsIndicatorActualSize);
+    memcpy(nullLeftFieldsIndicator, leftData, nullLeftFieldsIndicatorActualSize);
 
 	int nRightFields = this->rightAttributes.size();
     int nullRightFieldsIndicatorActualSize = ceil((double) nRightFields / CHAR_BIT);
@@ -670,7 +671,7 @@ void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightDat
     int nFields = this->leftAttributes.size() + this->rightAttributes.size();
     int nullFieldsIndicatorActualSize = ceil((double) nFields / CHAR_BIT);
     unsigned char *nullFieldsIndicator = (unsigned char *)malloc(nullFieldsIndicatorActualSize);
-    memcpy(nullLeftFieldsIndicator, leftData, nullLeftFieldsIndicatorActualSize);
+    memset(nullFieldsIndicator, 0, nullFieldsIndicatorActualSize);
 
     int newOffset = nullFieldsIndicatorActualSize;
     int leftOffset = nullLeftFieldsIndicatorActualSize;
@@ -683,6 +684,9 @@ void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightDat
     		int nByte = i / 8;
 	        int nBit = i % 8;
 	        bool nullBit = nullLeftFieldsIndicator[nByte] & (1 << (7 - nBit));
+#ifdef DEBUG_QE
+		printf("[concatenateLeftAndRight] %d field is null ? %d\n", i, nullBit);
+#endif
 	        if (nullBit)
 	        	nullFieldsIndicator[nByte] |= (1 << (7 - nBit));
 	        else
@@ -697,6 +701,9 @@ void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightDat
     		int nRightByte = (i - nLeftFields) / 8;
     		int nRightBit = (i - nLeftFields) % 8;
     		bool nullBit = nullRightFieldsIndicator[nRightByte] & (1 << (7 - nRightBit));
+#ifdef DEBUG_QE
+                printf("[concatenateLeftAndRight] %d field is null ? %d\n", i, nullBit);
+#endif
 
     		if (nullBit)
 	        	nullFieldsIndicator[nByte] |= (1 << (7 - nBit));
@@ -708,6 +715,10 @@ void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightDat
     }
 
     memcpy(data, nullFieldsIndicator, nullFieldsIndicatorActualSize);
+#ifdef DEBUG_QE
+    printf("[concatenateLeftAndRight] After concatenation\n");
+    RelationManager::instance()->printTuple(this->leftAttributes, data);
+#endif
     free(nullLeftFieldsIndicator);
     free(nullRightFieldsIndicator);
     free(nullFieldsIndicator);
@@ -715,14 +726,27 @@ void INLJoin::concatenateLeftAndRight(const void* leftData, const void* rightDat
 
 void copyAttribute(const void *from, int &fromOffset, void* to, int &toOffset, const Attribute &attr)
 {
+#ifdef DEBUG_QE
+	printf("[copyAttribute] Copying attribute %s, fromOffset: %d, toOffset: %d\n", attr.name.c_str(), fromOffset, toOffset);
+#endif
 	switch(attr.type)
 	{
 		case TypeInt:
+#ifdef DEBUG_QE
+			int t;
+			memcpy(&t, (char *)from + fromOffset, attr.length);
+			printf("[copyAttribute] Value of attribute is %d\n", t);
+#endif
 			memcpy((char *)to + toOffset, (char *)from + fromOffset, attr.length);
 			fromOffset += attr.length;
 			toOffset += attr.length;
 			break;
 		case TypeReal:
+#ifdef DEBUG_QE
+                        float f;
+                        memcpy(&f, (char *)from + fromOffset, attr.length);
+                        printf("[copyAttribute] Value of attribute is %f\n", f);
+#endif
 			memcpy((char *)to + toOffset, (char *)from + fromOffset, attr.length);
 			fromOffset += attr.length;
 			toOffset += attr.length;
