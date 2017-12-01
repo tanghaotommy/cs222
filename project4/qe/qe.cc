@@ -584,7 +584,10 @@ RC INLJoin::getNextTuple(void *data)
 			this->leftData = malloc(PAGE_SIZE);
 			this->leftValue = malloc(PAGE_SIZE);
 			if (this->leftIn->getNextTuple(this->leftData) == QE_EOF)
+			{
+				free(rightData);
 				return QE_EOF;
+			}
 			int pos = getValueOfAttrByName(this->leftData, this->leftAttributes, getOriginalAttrName(this->condition->lhsAttr), 
 					this->leftValue);
 			this->rightIn->setIterator(this->leftValue, this->leftValue, true, true);
@@ -599,19 +602,9 @@ RC INLJoin::getNextTuple(void *data)
 			printf("[INLJoin::getNextTuple] Loading tuple from right input\n");
 			RelationManager::instance()->printTuple(this->rightAttributes, rightData);
 #endif
-			bool can = canJoin(this->leftData, rightData);
-			if (can)
-			{
-#ifdef DEBUG_QE
-        	                printf("[INLJoin::getNextTuple] Concatenating left and right, left data is: \n");
-      	          	        RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
-#endif
-				concatenateLeftAndRight(this->leftData, rightData, data);
-				free(rightData);
-				return 0;
-			}
-			else
-				continue;
+			concatenateLeftAndRight(this->leftData, rightData, data);
+			free(rightData);
+			return 0;
 		} 
 		else
 		{
@@ -621,9 +614,9 @@ RC INLJoin::getNextTuple(void *data)
 				printf("[INLJoin::getNextTuple] Loading tuple from left input\n");
 				RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
 #endif
-                       		int pos = getValueOfAttrByName(this->leftData, this->leftAttributes, getOriginalAttrName(this->condition->lhsAttr), 
-                                        	this->leftValue);
-                        	this->rightIn->setIterator(this->leftValue, this->leftValue, true, true);
+                int pos = getValueOfAttrByName(this->leftData, this->leftAttributes, getOriginalAttrName(this->condition->lhsAttr), 
+                								this->leftValue);
+                this->rightIn->setIterator(this->leftValue, this->leftValue, true, true);
 				continue;
 			} 
 			else
