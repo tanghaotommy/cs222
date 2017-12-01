@@ -8,7 +8,7 @@
 #include "../ix/ix.h"
 #include <limits>
 
-#define DEBUG_QE
+//#define DEBUG_QE
 
 #define QE_EOF (-1)  // end of the index scan
 
@@ -232,6 +232,9 @@ class Project : public Iterator {
 class BNLJoin : public Iterator {
     // Block nested-loop join operator
     public:
+        vector<Attribute> leftAttrs;
+		vector<Attribute> rightAttrs;
+        bool firstTuple;
         BNLJoin(Iterator *leftIn,            // Iterator of input R
                TableScan *rightIn,           // TableScan Iterator of input S
                const Condition &condition,   // Join condition
@@ -241,6 +244,9 @@ class BNLJoin : public Iterator {
         ~BNLJoin(){};
 
         RC getNextTuple(void *data){return QE_EOF;};
+        vector<void *> block;
+        void *rightTuple;
+        void *leftTuple;
         // For attribute in vector<Attribute>, name it as rel.attr
         void getAttributes(vector<Attribute> &attrs) const{};
 };

@@ -385,6 +385,121 @@ string Aggregate::getOpName() const
 	}
 }
 
+BNLJoin::BNLJoin(Iterator *leftIn, TableScan *rightIn, const Condition &condition, const unsigned numPages)
+{
+	this->leftInput = leftIn;
+	this->rightInput = rightIn;
+	this->condition = condition;
+	this->numRecords = numRecords;
+
+	leftIn->getAttributes(leftAttrs);
+	rightIn->getAttributes(rightAttrs);
+
+	rightTuple = malloc(PAGE_SIZE);
+
+	this->firstTuple = true;
+}
+
+RC BNLJoin::loadBlock()
+{
+	freeBlock();
+	int sizeCount = 0;
+	while (sizeCount < numPages * PAGE_SIZE) 
+	{
+		void *data = malloc(PAGE_SIZE);
+		memset(data, 0, PAGE_SIZE);
+		if(leftInput->getNextTuple(data) == QE_EOF)
+		{
+			free(data);
+			break;
+		}
+		int size = RelationManager::instance()->getSizeOfdata(leftAttrs, data);
+		sizeCount += size;
+		block.push_back(data);
+	}
+	count = 0;
+	return 0;
+}
+
+RC BNLJoin::freeBlock()
+{
+	while(block.size() != 0)
+	{
+		free(block.front());
+		block.erase(block.begin());
+	}
+	return 0;
+}
+
+RC BNLJoin::getNextTuple()
+{
+	if(block.size() == 0)
+	{
+		return QE_EOF;
+	}
+
+	if(firstTuple)
+	{
+		if((loadNextBlock() == QE_EOF) || (rightInput->getNextTuple(rightTuple) == QE_EOF))
+		{
+			return QE_EOF;
+		}
+		firstTuple = false;
+	}
+
+	do
+	{
+		if(count == block.size()) //no more tuples in the left block, has two cases: still has tuples in the right; no more tuples in the right
+		{
+			count = 0;
+			memset(rightTuple, 0, PAGE_SIZE);
+			if(rightInput->getNextTuple(rightTuple) == QE_EOF)	//Right: get next tuple
+			{								//no more tuples in the right, need to load next block in the left and scan in the right again
+				if(loadBlock() == QE_EOF)  //Left: load next block 
+				{
+					return QE_EOF;	//no more blocks, no more tuples, done
+				}
+				else  //Right: scan from the first tuple again
+				{
+					rightInput->setIterator();
+					rightInput->getNextTuple(rightTuple);
+				}
+			}
+		}
+		leftTuple = block[count];
+		count++;
+	} while(!isConditionEqual());
+
+	return 0;
+}
+
+bool BNLJoin::isConditionEqual()
+{
+	void *value1 = malloc(PAGE_SIZE);
+	int index1 = getValueOfAttrByName(leftTuple, leftAttrs, condition.lhsAttr, value1);
+	void *value2 = malloc(PAGE_SIZE);
+	int index2 = getValueOfAttrByName(rightTuple, rightAttrs, condition.rhsAttr, value1);
+	bool satisfied = false;
+	if(leftAttrs[index1].type == rightAttrs[index2].type)
+		satisfied = isEqual(value1, value2, &leftAttrs[index1]);
+	free(value1);
+	free(value2);
+	return satisfied;
+}
+
+void BNLJoin::getAttributes(vector<Attribute>& attrs) const
+{
+	attrs = this->leftAttrs;
+	attrs.insert(attrs.end(), this->rightAttrs.begin(), this->rightAttrs.end());
+}
+
+BNLJoin::~BNLJoin()
+{
+	freeBlock();
+	free(rightTuple);
+
+}
+
 int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attributeName, void* value)
 {
 	int pos;
