@@ -292,6 +292,7 @@ class INLJoin : public Iterator {
         string leftTable;
         string rightTable;
         void *leftData = NULL;
+        void *leftValue = NULL;
         const Condition* condition;
 };
 
