@@ -564,8 +564,11 @@ INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &conditio
 }
 INLJoin::~INLJoin()
 {
-	if (leftData != NULL)
+	if (this->leftData != NULL)
+	{
+		free(leftValue);
 		free(leftData);
+	}
 }
 
 RC INLJoin::getNextTuple(void *data)
@@ -579,8 +582,12 @@ RC INLJoin::getNextTuple(void *data)
 			printf("[INLJoin::getNextTuple] Loading tuple from left input\n");
 #endif
 			this->leftData = malloc(PAGE_SIZE);
+			this->leftValue = malloc(PAGE_SIZE);
 			if (this->leftIn->getNextTuple(this->leftData) == QE_EOF)
 				return QE_EOF;
+			int pos = getValueOfAttrByName(this->leftData, this->leftAttributes, getOriginalAttrName(this->condition->lhsAttr), 
+					this->leftValue);
+			this->rightIn->setIterator(this->leftValue, this->leftValue, true, true);
 #ifdef DEBUG_QE
 			RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
 #endif
@@ -614,11 +621,14 @@ RC INLJoin::getNextTuple(void *data)
 				printf("[INLJoin::getNextTuple] Loading tuple from left input\n");
 				RelationManager::instance()->printTuple(this->leftAttributes, this->leftData);
 #endif
-				this->rightIn->setIterator(NULL, NULL, true, true);
+                       		int pos = getValueOfAttrByName(this->leftData, this->leftAttributes, getOriginalAttrName(this->condition->lhsAttr), 
+                                        	this->leftValue);
+                        	this->rightIn->setIterator(this->leftValue, this->leftValue, true, true);
 				continue;
 			} 
 			else
 			{
+				free(rightData);
 				return QE_EOF;
 			}
 		}
