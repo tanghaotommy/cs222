@@ -53,6 +53,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
     cout<<"-------before insert--------"<<endl;
     this-> printBtree(ixfileHandle,attribute);
 #endif
+    //cout<<"[insert entry] num of pages "<<ixfileHandle.fileHandle.getNumberOfPages()<<endl;
     if (ixfileHandle.fileHandle.getNumberOfPages() == 0)
     {
         Node root = Node(attribute);

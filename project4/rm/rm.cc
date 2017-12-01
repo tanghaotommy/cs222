@@ -1286,7 +1286,7 @@ RC RelationManager::insertIndex(const string &tableName, const vector<Attribute>
 		}
 		void *key = malloc(length);
 		// cout<<"[insert index] key length:"<<length<<" index:"<<index<<endl;
-		int keyValue;
+		 int keyValue;
 		memcpy(key, (char *)temp, length);
 		memcpy(&keyValue, (char *)temp, length);
 		Attribute att = recordDescriptor[index];

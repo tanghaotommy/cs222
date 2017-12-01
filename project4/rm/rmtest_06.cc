@@ -36,7 +36,6 @@ RC TEST_RM_6(const string &tableName)
         assert(rc == success && "RelationManager::insertTuple() should not fail.");
 
         rids[i] = rid;
-        free(tuple);
     }
 
     // Set up the iterator
@@ -56,14 +55,12 @@ RC TEST_RM_6(const string &tableName)
             cout << "***** [FAIL] Test Case 6 Failed *****" << endl << endl;
             rmsi.close();
             free(returnedData);
-            free(nullsIndicator);
             return -1;
         }
     }
     rmsi.close();
 
     free(returnedData);
-    free(nullsIndicator);
     cout << "***** Test Case 6 Finished. The result will be examined. *****" << endl << endl;
     return 0;
 }
