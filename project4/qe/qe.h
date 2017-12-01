@@ -300,16 +300,21 @@ class INLJoin : public Iterator {
 class GHJoin : public Iterator {
     // Grace hash join operator
     public:
-      GHJoin(Iterator *leftIn,               // Iterator of input R
+        GHJoin(Iterator *leftIn,               // Iterator of input R
             Iterator *rightIn,               // Iterator of input S
             const Condition &condition,      // Join condition (CompOp is always EQ)
             const unsigned numPartitions     // # of partitions for each relation (decided by the optimizer)
-      ){};
-      ~GHJoin(){};
-
-      RC getNextTuple(void *data){return QE_EOF;};
-      // For attribute in vector<Attribute>, name it as rel.attr
-      void getAttributes(vector<Attribute> &attrs) const{};
+        );
+    ~GHJoin();
+    Iterator *leftInput;               
+    Iterator *rightInput;
+    vector<Attribute> leftAttrs;
+		vector<Attribute> rightAttrs;
+    const Condition* condition;
+    unsigned numPartitions;
+    RC getNextTuple(void *data);
+    // For attribute in vector<Attribute>, name it as rel.attr
+    void getAttributes(vector<Attribute> &attrs) const;
 };
 
 class Aggregate : public Iterator {

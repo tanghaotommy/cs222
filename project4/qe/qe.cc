@@ -543,7 +543,28 @@ BNLJoin::BNLJoin(Iterator *leftIn, TableScan *rightIn, const Condition &conditio
 	this->condition = &condition;
 	this->numOfPages = numPages;
 
+	// leftIn->getAttributes(this->leftAttrs);
+
+	// for (int i = 0; i < this->leftAttrs.size(); ++i)
+	// {
+	// 	int pos = this->leftAttrs[i].name.find('.');
+	// 	string attributeName = this->leftAttrs[i].name.substr(pos + 1, this->leftAttrs[i].name.length() - pos + 1);
+	// 	this->leftTable = this->leftAttrs[i].name.substr(0, pos);
+	// 	this->leftAttrs[i].name = attributeName;
+	// }
+
+	// rightIn->getAttributes(this->rightAttrs);
+
+	// for (int i = 0; i < this->rightAttributes.size(); ++i)
+	// {
+	// 	int pos = this->rightAttributes[i].name.find('.');
+	// 	string attributeName = this->rightAttributes[i].name.substr(pos + 1, this->rightAttributes[i].name.length() - pos + 1);
+	// 	this->rightTable = this->rightAttributes[i].name.substr(0, pos);
+	// 	this->rightAttributes[i].name = attributeName;
+	// }
+
 	leftIn->getAttributes(leftAttrs);
+
 	rightIn->getAttributes(rightAttrs);
 
 	rightTuple = malloc(PAGE_SIZE);
@@ -555,6 +576,7 @@ RC BNLJoin::loadBlock()
 {
 	freeBlock();
 	int sizeCount = 0;
+	// cout<<"Load block"<<endl;
 	while (sizeCount < numOfPages * PAGE_SIZE) 
 	{
 		void *data = malloc(PAGE_SIZE);
@@ -570,8 +592,8 @@ RC BNLJoin::loadBlock()
 		attrs = this->leftAttrs;
 		for(int i =0; i <attrs.size(); i++)
 			attrs[i].name = getOriginalAttrName(attrs[i].name);
-		cout<<"Load block"<<endl;
-		RelationManager::instance()->printTuple(attrs, data);
+		
+		// RelationManager::instance()->printTuple(attrs, data);
 		int size = RelationManager::instance()->getSizeOfdata(leftAttrs, data);
 		sizeCount += size;
 		block.push_back(data);
@@ -634,6 +656,14 @@ RC BNLJoin::getNextTuple(void *data)
 		}
 		leftTuple = block[count];
 
+		// vector<Attribute> attrs2;
+		// attrs2 = this->leftAttrs;
+		// for(int i =0; i <attrs2.size(); i++)
+		// attrs2[i].name = getOriginalAttrName(attrs2[i].name);
+		// cout<<"*******************left Tuple: ";
+		// RelationManager::instance()->printTuple(attrs2, leftTuple);
+
+
 		count++;
 		//cout<<"cout:"<<count<<endl;
 	} while(!isConditionEqual());
@@ -646,12 +676,29 @@ RC BNLJoin::getNextTuple(void *data)
 bool BNLJoin::isConditionEqual()
 {
 	void *value1 = malloc(PAGE_SIZE);
-	int index1 = getValueOfAttrByName(leftTuple, leftAttrs, condition->lhsAttr, value1);
+
+	vector<Attribute> left_attrs;
+	left_attrs = this->leftAttrs;
+	for(int i =0; i <leftAttrs.size(); i++)
+	left_attrs[i].name = getOriginalAttrName(leftAttrs[i].name);
+
+	vector<Attribute> right_attrs;
+	right_attrs = this->rightAttrs;
+	for(int i =0; i <right_attrs.size(); i++)
+	right_attrs[i].name = getOriginalAttrName(right_attrs[i].name);
+
+	int index1 = getValueOfAttrByName(leftTuple, left_attrs, getOriginalAttrName(condition->lhsAttr), value1);
 	void *value2 = malloc(PAGE_SIZE);
-	int index2 = getValueOfAttrByName(rightTuple, rightAttrs, condition->rhsAttr, value2);
+	int index2 = getValueOfAttrByName(rightTuple, right_attrs, getOriginalAttrName(condition->rhsAttr), value2);
+
+	int v1;
+	int v2;
+	memcpy(&v1, value1, sizeof(int));
+	memcpy(&v2, value2, sizeof(int));
+	// cout<<"value1: type:"<<leftAttrs[index1].type<<" value:"<<v1<<"  value2: type:"<<rightAttrs[index2].type<<" value:"<<v2<<endl;
 	bool satisfied = false;
 	//cout<<"[BNL Join]"<<" index1:"<<index1<<" index2:"<<index2<<endl;
-	if(leftAttrs[index1].type == rightAttrs[index2].type)
+	if(left_attrs[index1].type == right_attrs[index2].type && left_attrs[index1].type == right_attrs[index2].type)
 		satisfied = isEqual(value1, value2, &leftAttrs[index1]);
 	free(value1);
 	free(value2);
@@ -786,6 +833,30 @@ bool INLJoin::canJoin(const void* leftData, const void* rightData)
 	}
 	return false;
 }
+
+// GHJoin::GHJoin(Iterator *leftIn, Iterator *rightIn, const Condition &condition, const unsigned numPartitions)
+// {
+// 	this->leftInput = leftIn;
+// 	this->rightInput = rightIn;
+// 	this->condition = &condition;
+// 	this->numPartitions = numPartitions;
+// 	leftIn->getAttributes(leftAttrs);
+// 	rightIn->getAttributes(rightAttrs);
+
+
+// }
+
+//  RC GHJoin::initRBFMFile()
+//  {
+
+//  	return 0;
+//  }
+
+// RC GHJoin::getNextTuple(void *data)
+// {
+
+// 	return 0;
+// }
 
 void concatenateLeftAndRight(const void* leftData, const void* rightData, void* data, vector<Attribute> &leftAttributes, vector<Attribute> &rightAttributes)
 {
@@ -975,12 +1046,12 @@ int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attr
 	        {
 	            if (attrs[i].type == TypeInt)
 	            {
-	            	//  int v;
+	            	int v;
 	                memcpy(value, (char *)data + offset, attrs[i].length);
 
-	                // memcpy(&v, value, sizeof(int));
+	                memcpy(&v, value, sizeof(int));
 	                offset += attrs[i].length;
-	                // printf("[getValueOfAttrByName]%s: %-10d\n", attrs[i].name.c_str(), v);
+	                //printf("[getValueOfAttrByName]%s: %-10d\n", attrs[i].name.c_str(), v);
 	            }
 	            if (attrs[i].type == TypeReal)
 	            {
