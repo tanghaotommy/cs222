@@ -7,6 +7,7 @@
 #include "../rm/rm.h"
 #include "../ix/ix.h"
 #include <limits>
+#include <unordered_map>
 
 //#define DEBUG_QE
 
@@ -38,6 +39,16 @@ struct Condition {
 string getOriginalAttrName(const string s);
 int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attributeName, void* value);
 bool compareCondition(const Attribute *attribute, const void* value, const Condition* condition);
+void copyAttribute(const void *from, int &fromOffset, void* to, int &toOffset, const Attribute &attr);
+void concatenateLeftAndRight(const void* leftData, const void* rightData, void* data, vector<Attribute> &leftAttributes, vector<Attribute> &rightAttributes);
+
+struct GroupAttr
+{
+    float sum = 0;
+    float count = 0;
+    float max = numeric_limits<float>::min();
+    float min = numeric_limits<float>::max();
+};
 
 class Iterator {
     // All the relational operators and access methods are iterators.
@@ -240,15 +251,22 @@ class BNLJoin : public Iterator {
                const Condition &condition,   // Join condition
                const unsigned numPages       // # of pages that can be loaded into memory,
 			                                 //   i.e., memory block size (decided by the optimizer)
-        ){};
-        ~BNLJoin(){};
-
-        RC getNextTuple(void *data){return QE_EOF;};
+        );
+        ~BNLJoin();
+        int count;
+        RC getNextTuple(void *data);
         vector<void *> block;
+        Iterator *leftInput;
+        TableScan *rightInput;
         void *rightTuple;
         void *leftTuple;
+        const Condition* condition;
+        int numOfPages;
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        RC loadBlock();
+        RC freeBlock();
+        bool isConditionEqual();
+        void getAttributes(vector<Attribute> &attrs) const;
 };
 
 
@@ -258,12 +276,23 @@ class INLJoin : public Iterator {
         INLJoin(Iterator *leftIn,           // Iterator of input R
                IndexScan *rightIn,          // IndexScan Iterator of input S
                const Condition &condition   // Join condition
-        ){};
-        ~INLJoin(){};
+        );
+        ~INLJoin();
 
-        RC getNextTuple(void *data){return QE_EOF;};
+        RC getNextTuple(void *data);
         // For attribute in vector<Attribute>, name it as rel.attr
-        void getAttributes(vector<Attribute> &attrs) const{};
+        void getAttributes(vector<Attribute> &attrs) const;
+        
+        bool canJoin(const void* leftData, const void* rightData);
+
+        vector<Attribute> leftAttributes;
+        vector<Attribute> rightAttributes;
+        Iterator *leftIn;
+        IndexScan *rightIn;
+        string leftTable;
+        string rightTable;
+        void *leftData = NULL;
+        const Condition* condition;
 };
 
 // Optional for everyone. 10 extra-credit points
@@ -315,13 +344,21 @@ class Aggregate : public Iterator {
         Attribute aggAttr;
         Attribute groupAttr;
         AggregateOp op;
-        bool hasGroupBy;
+        bool hasGroupBy = false;
         float sum = 0;
         float count = 0;
         float max = numeric_limits<float>::min();
         float min = numeric_limits<float>::max();
         int current = 0;
         int total = 0;
+
+        unordered_map<string, GroupAttr> stringMap;
+        unordered_map<float, GroupAttr> floatMap;
+        unordered_map<int, GroupAttr> intMap;
+
+        unordered_map<string, GroupAttr>::iterator stringIterator;
+        unordered_map<float, GroupAttr>::iterator floatIterator;
+        unordered_map<int, GroupAttr>::iterator intIterator;
 };
 
 

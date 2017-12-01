@@ -1167,12 +1167,12 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 	void *data = malloc(1 + indexFileName.size() + 2 * sizeof(int));
 	memcpy(data, nullsIndicator, 1);
 	offset += 1;
-	memcpy(data + offset, &tableId, sizeof(int));
+	memcpy((char *)data + offset, &tableId, sizeof(int));
 	offset += sizeof(int);
 	int length = indexFileName.size();
-	memcpy(data + offset, &length, sizeof(int));
+	memcpy((char *)data + offset, &length, sizeof(int));
 	offset += sizeof(int);
-	memcpy(data + offset, indexFileName.c_str(), length);
+	memcpy((char *)data + offset, indexFileName.c_str(), length);
 
 	vector<Attribute> attrs;
 	Attribute attr;
@@ -1209,7 +1209,7 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 	void *new_data = malloc(PAGE_SIZE);
 	while(rm_ScanIterator.getNextTuple(rid, data) != RM_EOF)
 	{
-		insertIndex(tableName,attributes,data,rid);
+		insertSingleIndex(tableName, attributes, indexFileName, data, rid);
 	}
 	
 	free(data);
@@ -1273,35 +1273,40 @@ RC RelationManager::insertIndex(const string &tableName, const vector<Attribute>
 
 	for (int i = 0; i < indexAttrNames.size(); ++i)
 	{
-		/* code */
-		void *temp = malloc(PAGE_SIZE);
-		int length = 0;
-		int index = getKey(tableName, recordDescriptor, data, indexAttrNames[i], temp, length);
-		
-		if(index < 0)
-		{
-			cout<<"[insert index] Can't find that index"<<endl;
-			cout<<"[insert index] "<<indexAttrNames[i]<<endl;
-			return -1;
-		}
-		void *key = malloc(length);
-		// cout<<"[insert index] key length:"<<length<<" index:"<<index<<endl;
-		 int keyValue;
-		memcpy(key, (char *)temp, length);
-		memcpy(&keyValue, (char *)temp, length);
-		Attribute att = recordDescriptor[index];
-		att.name = tableName + "_" + recordDescriptor[index].name;
-		// cout<<"[insert index] insert table "<<att.name<<endl;
-		// cout<<"[insert index] insert key "<<keyValue<<" type:"<<att.type<<" atribute name:"<<att.name<<endl;
-
-		IXFileHandle ixfileHandle;
-		IndexManager::instance()->openFile(att.name, ixfileHandle);
-		IndexManager::instance()->insertEntry(ixfileHandle,att, key, rid);
-		IndexManager::instance()->closeFile(ixfileHandle);
-		free(temp);
+		insertSingleIndex(tableName, recordDescriptor, indexAttrNames[i], data, rid);
 	}
 	
 	return 0;
+}
+
+RC RelationManager::insertSingleIndex(const string &tableName, const vector<Attribute> recordDescriptor, const string indexName, const void *data, const RID &rid)
+{
+	/* code */
+	void *temp = malloc(PAGE_SIZE);
+	int length = 0;
+	int index = getKey(tableName, recordDescriptor, data, indexName, temp, length);
+	
+	if(index < 0)
+	{
+		// cout<<"[insert index] Can't find that index"<<endl;
+		// cout<<"[insert index] "<<indexAttrNames[i]<<endl;
+		return -1;
+	}
+	void *key = malloc(length);
+	// cout<<"[insert index] key length:"<<length<<" index:"<<index<<endl;
+	int keyValue;
+	memcpy(key, (char *)temp, length);
+	memcpy(&keyValue, (char *)temp, length);
+	Attribute att = recordDescriptor[index];
+	att.name = tableName + "_" + recordDescriptor[index].name;
+	// cout<<"[insert index] insert table "<<att.name<<endl;
+	// cout<<"[insert index] insert key "<<keyValue<<" type:"<<att.type<<" atribute name:"<<att.name<<endl;
+
+	IXFileHandle ixfileHandle;
+	IndexManager::instance()->openFile(att.name, ixfileHandle);
+	IndexManager::instance()->insertEntry(ixfileHandle,att, key, rid);
+	IndexManager::instance()->closeFile(ixfileHandle);
+	free(temp);
 }
 
 int getKey(const string &tableName, const vector<Attribute> recordDescriptor, const void *data, string keyName, void *key, int &length)
@@ -1402,7 +1407,7 @@ RC RelationManager::deleteIndex(const string &tableName, const vector<Attribute>
 		
 		if(index < 0)
 		{
-			cout<<"[insert index] Can't find that index"<<endl;
+			// cout<<"[insert index] Can't find that index"<<endl;
 			return -1;
 		}
 		void *key = malloc(length);

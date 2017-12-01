@@ -102,6 +102,8 @@ public:
   RC destroyIndex(const string &tableName, const string &attributeName);
 
   RC insertIndex(const string &tableName, const vector<Attribute> recordDescriptor, const void *data, const RID &rid);
+  RC insertSingleIndex(const string &tableName, const vector<Attribute> recordDescriptor, const string indexName, const void *data, const RID &rid);
+
   RC deleteIndex(const string &tableName, const vector<Attribute> recordDescriptor, const void *data, const RID &rid);
 
   // indexScan returns an iterator to allow the caller to go through qualified entries in index
