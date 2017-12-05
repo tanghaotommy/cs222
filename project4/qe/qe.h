@@ -2,7 +2,7 @@
 #define _qe_h_
 
 #include <vector>
-
+#include <sstream>
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
 #include "../ix/ix.h"
@@ -41,7 +41,10 @@ int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attr
 bool compareCondition(const Attribute *attribute, const void* value, const Condition* condition);
 void copyAttribute(const void *from, int &fromOffset, void* to, int &toOffset, const Attribute &attr);
 void concatenateLeftAndRight(const void* leftData, const void* rightData, void* data, vector<Attribute> &leftAttributes, vector<Attribute> &rightAttributes);
-
+unsigned int hashTypeInt(void* data);
+ unsigned int hashTypeReal(void *data);
+ unsigned hashTypeVarChar(void *data);
+ 
 struct GroupAttr
 {
     float sum = 0;
@@ -262,6 +265,7 @@ class BNLJoin : public Iterator {
         void *leftTuple;
         const Condition* condition;
         int numOfPages;
+        bool fail;
         // For attribute in vector<Attribute>, name it as rel.attr
         RC loadBlock();
         RC freeBlock();
@@ -306,15 +310,45 @@ class GHJoin : public Iterator {
             const unsigned numPartitions     // # of partitions for each relation (decided by the optimizer)
         );
     ~GHJoin();
+    RBFM_ScanIterator *rightRbfm_scanIterator;
+    int currentFileHandleIndex;
     Iterator *leftInput;               
     Iterator *rightInput;
-    vector<Attribute> leftAttrs;
-		vector<Attribute> rightAttrs;
+    string leftTable;
+    string rightTable;
+    bool fail;
+    RecordBasedFileManager *rbfm;
+    vector<Attribute> leftAttributes;
+	  vector<Attribute> rightAttributes;
+    vector<string> leftAttrNames;
+    vector<string> rightAttrNames;
     const Condition* condition;
     unsigned numPartitions;
+
+    unordered_map<int, void *> intMap;
+    unordered_map<float, void *> floatMap;
+    unordered_map<string, void *> stringMap;
+
+    vector<FileHandle*> leftFileHandles;
+    vector<FileHandle*> rightFileHandles;
+    vector<vector<vector<void *>>> inPartitionHashMap;
     RC getNextTuple(void *data);
+    RC loadLeftPartition();
+    RC loadRightPartition();
+    RC initRBFM();
+    RC partitionFile();
+    RC freeinPartitionHashMap();
+    bool inPartitionHashMapEquals(void *value1,void *value2, Attribute &attr);
+    int inPartitionHashMapFind(void * tuple1, Attribute attr, int index);
+    unsigned inPartitionHashFunction(void *key, AttrType type);
+    string getNameOfPartition(bool isLeft, int index);
+    int HashTuple(void *tuple, bool isLeft);
+    unsigned getHashValue(void *tuple, vector<Attribute> Attributes, string hsAttr);
     // For attribute in vector<Attribute>, name it as rel.attr
     void getAttributes(vector<Attribute> &attrs) const;
+    RC setattribute(int type, void *data);
+    bool compareAttributeType(int type1, AttrType type2);
+    int getAttributeType(void *data);
 };
 
 class Aggregate : public Iterator {

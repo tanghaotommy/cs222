@@ -570,7 +570,6 @@ int populateLeftTable() {
 		prepareLeftTuple(attrs.size(), nullsIndicator, a, b, c, buf);
 
 		rc = rm->insertTuple("left", buf, rid);
-		rm->printTuple(attrs, buf);
 		if (rc != success) {
 			goto clean_up;
 		}

@@ -22,14 +22,14 @@ int testCase_1() {
 		cerr << "***** createIndexforLeftB() failed.  *****" << endl;
 		return rc;
 	}
-	cout<<"success"<<endl;
+
 	// Insert tuples.
 	rc = populateLeftTable();
 	if (rc != success) {
 		cerr << "***** populateLeftTable() failed.  *****" << endl;
 		return rc;
 	}
-cout<<"success"<<endl;
+
 	// Create an index after inserting tuples - should reflect the currently existing tuples.
 	rc = createIndexforLeftC();
 	if (rc != success) {

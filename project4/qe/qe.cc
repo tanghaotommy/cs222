@@ -542,7 +542,7 @@ BNLJoin::BNLJoin(Iterator *leftIn, TableScan *rightIn, const Condition &conditio
 	this->rightInput = rightIn;
 	this->condition = &condition;
 	this->numOfPages = numPages;
-
+	this->fail = false;
 	// leftIn->getAttributes(this->leftAttrs);
 
 	// for (int i = 0; i < this->leftAttrs.size(); ++i)
@@ -646,27 +646,35 @@ RC BNLJoin::getNextTuple(void *data)
 					rightInput->getNextTuple(rightTuple);
 				}
 			}
-			// vector<Attribute> attrs;
-			// attrs = this->rightAttrs;
-			// for(int i =0; i <attrs.size(); i++)
-			// attrs[i].name = getOriginalAttrName(attrs[i].name);
-			// cout<<"right Tuple--------------: ";
-			// RelationManager::instance()->printTuple(attrs, rightTuple);
+#ifdef DEBUG_QE
+			vector<Attribute> attrs;
+			attrs = this->rightAttrs;
+			for(int i =0; i <attrs.size(); i++)
+			attrs[i].name = getOriginalAttrName(attrs[i].name);
+			cout<<"[BNL join] right Tuple--------------: ";
+			RelationManager::instance()->printTuple(attrs, rightTuple);
+#endif
 			count = 0;
 		}
 		leftTuple = block[count];
-
-		// vector<Attribute> attrs2;
-		// attrs2 = this->leftAttrs;
-		// for(int i =0; i <attrs2.size(); i++)
-		// attrs2[i].name = getOriginalAttrName(attrs2[i].name);
-		// cout<<"*******************left Tuple: ";
-		// RelationManager::instance()->printTuple(attrs2, leftTuple);
-
+#ifdef DEBUG_QE
+		vector<Attribute> attrs2;
+		attrs2 = this->leftAttrs;
+		for(int i =0; i <attrs2.size(); i++)
+		attrs2[i].name = getOriginalAttrName(attrs2[i].name);
+		cout<<"[BNL join]******************left Tuple: ";
+		RelationManager::instance()->printTuple(attrs2, leftTuple);
+#endif
 
 		count++;
 		//cout<<"cout:"<<count<<endl;
 	} while(!isConditionEqual());
+
+	if(this->fail)
+	{
+		this->fail = false;
+		return -1;
+	}
 
 	concatenateLeftAndRight(leftTuple, rightTuple, data, this->leftAttrs, this->rightAttrs);
 	
@@ -691,10 +699,13 @@ bool BNLJoin::isConditionEqual()
 	void *value2 = malloc(PAGE_SIZE);
 	int index2 = getValueOfAttrByName(rightTuple, right_attrs, getOriginalAttrName(condition->rhsAttr), value2);
 
-	int v1;
-	int v2;
-	memcpy(&v1, value1, sizeof(int));
-	memcpy(&v2, value2, sizeof(int));
+	if(index1 < 0 || index2 < 0) 
+	{
+		this->fail = true;
+		return true;
+	}
+	else this->fail = false;
+		
 	// cout<<"value1: type:"<<leftAttrs[index1].type<<" value:"<<v1<<"  value2: type:"<<rightAttrs[index2].type<<" value:"<<v2<<endl;
 	bool satisfied = false;
 	//cout<<"[BNL Join]"<<" index1:"<<index1<<" index2:"<<index2<<endl;
@@ -707,6 +718,7 @@ bool BNLJoin::isConditionEqual()
 
 void BNLJoin::getAttributes(vector<Attribute>& attrs) const
 {
+	attrs.clear();
 	attrs = this->leftAttrs;
 	attrs.insert(attrs.end(), this->rightAttrs.begin(), this->rightAttrs.end());
 }
@@ -834,29 +846,619 @@ bool INLJoin::canJoin(const void* leftData, const void* rightData)
 	return false;
 }
 
-// GHJoin::GHJoin(Iterator *leftIn, Iterator *rightIn, const Condition &condition, const unsigned numPartitions)
+GHJoin::GHJoin(Iterator *leftIn, Iterator *rightIn, const Condition &condition, const unsigned numPartitions)
+{
+	this->leftInput = leftIn;
+	this->rightInput = rightIn;
+	this->condition = &condition;
+	this->numPartitions = numPartitions;
+	this->fail = false;
+	this->currentFileHandleIndex = 0;
+	this->rightRbfm_scanIterator = 0;
+	leftIn->getAttributes(leftAttributes);
+	rightIn->getAttributes(rightAttributes);
+
+	for (int i = 0; i < this->leftAttributes.size(); ++i)
+	{
+		int pos = this->leftAttributes[i].name.find('.');
+		string attributeName = this->leftAttributes[i].name.substr(pos + 1, this->leftAttributes[i].name.length() - pos + 1);
+		this->leftTable = this->leftAttributes[i].name.substr(0, pos);
+		this->leftAttributes[i].name = attributeName;
+		this->leftAttrNames.push_back(attributeName);
+	}
+
+	for (int i = 0; i < this->rightAttributes.size(); ++i)
+	{
+		int pos = this->rightAttributes[i].name.find('.');
+		string attributeName = this->rightAttributes[i].name.substr(pos + 1, this->rightAttributes[i].name.length() - pos + 1);
+		this->rightTable = this->rightAttributes[i].name.substr(0, pos);
+		this->rightAttributes[i].name = attributeName;
+		this->rightAttrNames.push_back(attributeName);
+	}
+
+	RC rc;
+	rc = initRBFM();
+	if(rc != 0)
+	{
+		cout<<"[GHJoin] initRBFM fail"<<endl;
+		return;
+	}
+	rc = partitionFile();
+	if(rc != 0){
+		cout<<"[GHJoin] partitionFile fail"<<endl;
+		return;
+	}
+	rc = loadLeftPartition();
+	if(rc != 0){
+		cout<<"[GHJoin] loadLeftPartition fail"<<endl;
+		return;
+	}
+	loadRightPartition();
+	if(rc != 0){
+		cout<<"[GHJoin] loadRightPartition fail"<<endl;
+		return;
+	}
+}
+
+RC GHJoin::initRBFM()
+{
+	rbfm = RecordBasedFileManager::instance();
+    for(int i = 1; i <= this->numPartitions; i++)
+    {
+        string leftFileName = getNameOfPartition(true, i);
+        FileHandle *leftFileHandle = new FileHandle();
+        rbfm->createFile(leftFileName);
+		// cout<<"------partition left file name:"<<leftFileName<<endl;
+		rbfm->openFile(leftFileName, *leftFileHandle);
+        leftFileHandles.push_back(leftFileHandle);
+        
+        string rightFileName = getNameOfPartition(false, i);
+        FileHandle *rightFileHandle = new FileHandle();
+        rbfm->createFile(rightFileName);
+		// cout<<"------partition right file name:"<<rightFileName<<endl;
+		rbfm->openFile(rightFileName, *rightFileHandle);
+        rightFileHandles.push_back(rightFileHandle);
+    }
+    return 0;
+}
+
+ RC GHJoin::partitionFile()
+ {
+	void *tuple = malloc(PAGE_SIZE);
+	int hash;
+    while(this->leftInput->getNextTuple(tuple) != QE_EOF)
+    {
+		hash = HashTuple(tuple, true);
+        if(hash < 0)
+        {
+            this->fail = true;
+			free(tuple);
+			return -1;
+        }
+		RID rid;
+		// cout<<"**********[GHJoin]******** all left records: ";
+		// cout<<"hashValue:"<<hash<<"		";
+		// rbfm->printRecord(leftAttributes,tuple);
+
+		if(rbfm->insertRecord(*leftFileHandles[hash], leftAttributes, tuple, rid) != 0)
+    	{
+			cout<<"[GHJoin] insert left fail !!!!!!!!!!!!!!!!"<<endl;
+			this->fail = true;
+			free(tuple);
+        	return -1;
+    	}
+		// cout<<"[][][]][]"<<hash<<" "<<rid.pageNum<<" "<<rid.slotNum<<endl;
+
+		// cout<<"+++++++++++++hash:"<<hash<<endl;
+		// void *d = malloc(PAGE_SIZE);
+		// rbfm->readRecord(*leftFileHandles[hash],leftAttributes,r,d);
+		// rbfm->printRecord(leftAttributes,d);
+		// free(d);
+		memset(tuple, 0 ,PAGE_SIZE);
+    }
+    while(this->rightInput->getNextTuple(tuple) != QE_EOF)
+    {
+		hash = HashTuple(tuple, false);
+        if(hash < 0)
+        {
+            this->fail = true;
+			free(tuple);
+			return -1;
+        }
+		RID rid;
+		// cout<<"**********[GHJoin]******** all right records: ";
+		// cout<<"hashValue:"<<hash<<"		";
+		// rbfm->printRecord(rightAttributes,tuple);
+
+		if(rbfm->insertRecord(*rightFileHandles[hash], rightAttributes, tuple, rid) != 0)
+    	{
+			cout<<"[GHJoin] insert right fail !!!!!!!!!!!!!!!!"<<endl;
+			this->fail = true;
+			free(tuple);
+        	return -1;
+    	}
+        memset(tuple, 0 ,PAGE_SIZE);
+    }
+    free(tuple);
+	return 0;
+}
+
+// RC GHJoin::freeHashMap()
 // {
-// 	this->leftInput = leftIn;
-// 	this->rightInput = rightIn;
-// 	this->condition = &condition;
-// 	this->numPartitions = numPartitions;
-// 	leftIn->getAttributes(leftAttrs);
-// 	rightIn->getAttributes(rightAttrs);
+// 	// for(int i = 0;i<HashMap.size();i++)
+// 	// {
 
-
-// }
-
-//  RC GHJoin::initRBFMFile()
-//  {
-
-//  	return 0;
-//  }
-
-// RC GHJoin::getNextTuple(void *data)
-// {
-
+// 	// }
+// 	HashMap.clear();
 // 	return 0;
 // }
+
+RC GHJoin::freeinPartitionHashMap()
+{
+	
+	for ( auto it = intMap.begin(); it != intMap.end(); ++it )
+	{
+		free(it->second);
+	}
+	for ( auto it = floatMap.begin(); it != floatMap.end(); ++it )
+	{
+		free(it->second);
+	}
+		for ( auto it = stringMap.begin(); it != stringMap.end(); ++it )
+	{
+		free(it->second);
+	}
+	// for(int i = 0; i <= intMap.size(); i++)
+	// {
+	// 	free(intMap[i].second);
+	// }
+	// for(int i = 0; i <= intMap.size(); i++)
+	// {
+	// 	free(floatMap[i].second);
+	// }
+	// for(int i = 0; i <= intMap.size(); i++)
+	// {
+	// 	free(stringMap[i].second);
+	// }
+	intMap.clear();
+	floatMap.clear();
+	stringMap.clear();
+	return 0;
+}
+
+RC GHJoin::loadLeftPartition()
+{
+	freeinPartitionHashMap();
+	// for(int i=0;i<numPartitions;i++)
+	// {
+	// 	vector<void *> v1;
+	// 	vector<vector<void *>> v2;
+	// 	v2.push_back(v1);
+	// 	inPartitionHashMap.push_back(v2);
+	// }
+	
+	bool hasData = false;
+	RBFM_ScanIterator leftRbfm_scanIterator;
+	rbfm->scan(*(leftFileHandles[currentFileHandleIndex]), leftAttributes, "", NO_OP, NULL, leftAttrNames, leftRbfm_scanIterator);
+
+	
+		// void *d = malloc(PAGE_SIZE);
+		// rbfm->readRecord(*(leftFileHandles[currentFileHandleIndex]),leftAttributes, r ,d);
+		// rbfm->printRecord(leftAttributes,d);
+		// cout<<"curr filehandle index"<<currentFileHandleIndex<<endl;
+
+	RID rid;
+	void *record = malloc(PAGE_SIZE);
+	while(leftRbfm_scanIterator.getNextRecord(rid, record) != RBFM_EOF)
+	{
+		hasData = true;;
+		void *value = malloc(PAGE_SIZE);
+		int length = rbfm->getRecordLength(leftAttributes, record);
+		void *tuple = malloc(length);
+		memcpy((char *)tuple, (char *)record, length);
+		int index = getValueOfAttrByName(record, leftAttributes, getOriginalAttrName(condition->lhsAttr), value);
+		
+		// int inPartitionHashValue = inPartitionHashFunction(value, rightAttributes[index].type);
+		// vector<void *> v;
+		// v.push_back(value);
+		// v.push_back(record);
+		// inPartitionHashMap[inPartitionHashValue].push_back(v);
+
+		// cout<<"[GHJoin] [Load left partition] ";
+		// rbfm->printRecord(leftAttributes, record);
+
+		switch(leftAttributes[index].type)
+		{
+			case TypeInt:{
+				int n;
+				memcpy(&n, (char *)value, sizeof(int));
+				intMap.insert(make_pair(n,tuple));
+				break;
+			}
+			case TypeReal:{
+				float f;
+				memcpy(&f, (char *)value, sizeof(float));
+				floatMap.insert(make_pair(f,tuple));
+				break;
+			}
+			case TypeVarChar:{
+				string str;
+				int offset = 0;
+				int strLength;
+				memcpy(&strLength, (char *)value + offset, sizeof(int));
+				offset += sizeof(int);
+				char *str_c = (char*) malloc(strLength + 1);
+				memcpy(str_c, (char *)value + offset, strLength);
+				str_c[strLength] = '\0';
+				str = string(str_c);
+				stringMap.insert(make_pair(str,tuple));
+				free(str_c);      
+				break;
+			}
+		}
+		free(value);
+	}
+	leftRbfm_scanIterator.close();
+	free(record);
+	if(!hasData && currentFileHandleIndex + 1 >= (int)numPartitions)
+	{
+		return -1;
+	}
+
+	return 0;
+}
+
+RC GHJoin::loadRightPartition()
+{
+	if(this->rightRbfm_scanIterator != 0)
+    {
+        rightRbfm_scanIterator->close();
+        delete rightRbfm_scanIterator;
+        rightRbfm_scanIterator = 0;
+	}
+	this->rightRbfm_scanIterator = new RBFM_ScanIterator();
+	rbfm->scan(*(rightFileHandles[currentFileHandleIndex]), rightAttributes, "", NO_OP, NULL, rightAttrNames, *rightRbfm_scanIterator);
+	return 0;
+}
+
+int GHJoin::inPartitionHashMapFind(void * tuple1, Attribute attr, int index)
+{
+	for(int i=0;i<inPartitionHashMap[index].size();i++)
+	{
+		int type = getAttributeType(inPartitionHashMap[index].at(i).at(2));
+		if(compareAttributeType(type,attr.type))
+		{
+			if(inPartitionHashMapEquals(tuple1, inPartitionHashMap[index].at(i).at(0), attr))
+			{
+				return i;
+			}
+		}
+	}
+	return -1;
+}
+
+RC GHJoin::setattribute(int type, void *data)
+{
+	memcpy((char *)data, &type, sizeof(float));
+	return 0;
+}
+
+int GHJoin::getAttributeType(void *data)
+{
+	int type;
+	memcpy(&type, (char *)data, sizeof(float));
+	return type;
+}
+
+bool GHJoin::compareAttributeType(int type1, AttrType type2)
+{
+	return type1 == (int)type2;
+}
+
+RC GHJoin::getNextTuple(void *data)
+{
+	bool findData = false;
+	do{
+		findData = false;
+		if(this->currentFileHandleIndex >= (int)this->numPartitions)
+				return QE_EOF;
+		RID rid;
+		void *tuple = malloc(PAGE_SIZE);
+		bool reachEOF = true;
+		while(rightRbfm_scanIterator->getNextRecord(rid, tuple) != RBFM_EOF)
+		{
+			reachEOF = false;
+			void *value = malloc(PAGE_SIZE);
+			int index = getValueOfAttrByName(tuple, rightAttributes, getOriginalAttrName(condition->rhsAttr), value);
+			// int inPartitionHashValue = inPartitionHashFunction(value, rightAttributes[index].type);
+			// int inPartitionHashMapIndex = inPartitionHashMapFind(tuple, rightAttributes[index], inPartitionHashValue);
+//#ifdef DEBUG_QE
+			// cout<<"[GHJoin] scan right tuple:";
+			// rbfm->printRecord(rightAttributes,tuple);
+//#endif
+
+
+			switch(rightAttributes[index].type)
+			{
+				case TypeInt:{
+					int n;
+					memcpy(&n, (char *)value, sizeof(int));
+					auto ite = intMap.find(n);
+					if (ite != intMap.end()) {
+						concatenateLeftAndRight(ite->second, tuple, data, leftAttributes, rightAttributes);
+						findData = true;
+					}
+					break;
+				}
+				case TypeReal:{
+					float f;
+					memcpy(&f, (char *)value, sizeof(float));
+					auto ite = floatMap.find(f);
+					if (ite != floatMap.end()) {
+		//#ifdef DEBUG_QE
+						// cout<<"[GHJoin] left tuple:  ";
+						// rbfm->printRecord(leftAttributes,ite->second);
+		//#endif
+						concatenateLeftAndRight(ite->second, tuple, data, leftAttributes, rightAttributes);
+		#ifdef DEBUG_QE
+						vector<Attribute> attr;
+						getAttributes(attr);
+						cout<<"[GHJoin] join tuple:  ";
+						rbfm->printRecord(attr,data);
+		#endif		
+						findData = true;
+					}
+					break;
+				}
+				case TypeVarChar:{
+					string str;
+					int offset = 0;
+					int strLength;
+					memcpy(&strLength, (char *)value + offset, sizeof(int));
+					offset += sizeof(int);
+					char *str_c = (char*) malloc(strLength + 1);
+					memcpy(str_c, (char *)value + offset, strLength);
+					str_c[strLength] = '\0';
+					str = string(str_c);
+					auto ite = stringMap.find(str);
+					if (ite != stringMap.end()) {
+						concatenateLeftAndRight(ite->second, tuple, data, leftAttributes, rightAttributes);
+						findData = true;
+					}
+
+					// cout<<"[GHJoin] left tuple:  ";
+					// rbfm->printRecord(leftAttributes,ite->second);
+
+					// vector<Attribute> attr;
+					// 	getAttributes(attr);
+					// 	cout<<"[GHJoin] join tuple:  ";
+					// 	rbfm->printRecord(attr, data);
+
+					free(str_c);      
+					break;
+				}
+			}
+			free(value);
+
+			if(findData)
+			{
+				break;
+			}
+		}
+		free(tuple);
+		if(reachEOF) //reach EOF, load next partition
+		{
+			this->currentFileHandleIndex++;
+			if(this->currentFileHandleIndex >= (int)this->numPartitions)
+				return QE_EOF;
+			
+			//cout<<"[GHJoin] load next partition"<<endl;
+
+			loadLeftPartition();
+			loadRightPartition();
+		}
+	}while(!findData);
+
+	return 0;
+}
+
+
+
+void GHJoin::getAttributes(vector<Attribute> &attrs) const
+{
+	attrs.clear();
+    attrs = this->leftAttributes;
+    unsigned i;
+
+    // For attribute in vector<Attribute>, name it as rel.attr
+    for(i = 0; i < attrs.size(); ++i)
+    {
+        string tmp = this->leftTable;
+        tmp += ".";
+        tmp += attrs.at(i).name;
+        attrs.at(i).name = tmp;
+    }
+
+    Attribute t;
+    for(i = 0; i < this->rightAttributes.size(); ++i)
+    {
+        string tmp = this->rightTable;
+        tmp += ".";
+        tmp += this->rightAttributes.at(i).name;
+
+        t = this->rightAttributes[i];
+        t.name = tmp;
+        attrs.push_back(t);
+    }
+}
+
+GHJoin::~GHJoin()
+{
+	for(int i=0;i<numPartitions;i++)
+    {
+        rbfm->closeFile(*(leftFileHandles[i]));
+		rbfm->destroyFile(getNameOfPartition(true, i+1));
+		rbfm->closeFile(*(rightFileHandles[i]));
+		rbfm->destroyFile(getNameOfPartition(false, i+1));
+    }
+	freeinPartitionHashMap();
+
+	for(unsigned i = 0; i < numPartitions; i++)
+    {
+        delete leftFileHandles.at(i);
+        delete rightFileHandles.at(i);
+    }
+	leftFileHandles.clear();
+	rightFileHandles.clear();
+	if(rightRbfm_scanIterator != 0)
+    {
+        delete rightRbfm_scanIterator;
+        rightRbfm_scanIterator = 0;
+    }
+	leftAttributes.clear();
+	rightAttributes.clear();
+	leftAttrNames.clear();
+	rightAttrNames.clear();
+}
+
+int GHJoin::HashTuple(void *tuple, bool isLeft)
+ {
+	unsigned hashValue;
+	if(isLeft)
+	{
+		hashValue = getHashValue(tuple, leftAttributes,condition->lhsAttr);
+	}
+	else
+	{
+		hashValue = getHashValue(tuple, rightAttributes,condition->rhsAttr);
+	}
+
+	if(this->fail) return -1;
+    
+ 	return hashValue;
+ }
+
+ bool GHJoin::inPartitionHashMapEquals(void *value1,void *value2, Attribute &attr)
+ {
+	return isEqual(value1, value2, &attr);
+ }
+
+ unsigned GHJoin::inPartitionHashFunction(void *key, AttrType type)
+{
+	unsigned hashValue;
+	switch(type)
+	{
+	case TypeInt:
+		hashValue = (hashTypeInt(key) % this->numPartitions);
+		hashValue = hashValue * 17 + 23;
+		hashValue = hashValue % this->numPartitions;
+		break;
+	case TypeReal:
+		hashValue = hashTypeReal(key) % this->numPartitions;
+		hashValue = hashValue * 11 + 19;
+		hashValue = hashValue % this->numPartitions;
+		break;
+	case TypeVarChar:
+		hashValue = hashTypeVarChar(key) % this->numPartitions;
+		hashValue = hashValue * 5 + 31;
+		hashValue = hashValue % this->numPartitions;
+		break;
+	}
+	return hashValue;
+}
+
+unsigned GHJoin::getHashValue(void *tuple, vector<Attribute> Attributes, string hsAttr)
+{
+	void *value = malloc(PAGE_SIZE);
+	int index;
+	unsigned hashValue;
+	index = getValueOfAttrByName(tuple, Attributes, getOriginalAttrName(hsAttr), value);
+	if(index < 0)
+	{
+		this->fail = true;
+	}
+	// float v;
+	// memcpy(&v, (char *)value, sizeof(float));
+	// cout<<"[GHJoin] data:"<<v<<" type:"<<Attributes[index].type<<endl;
+	switch(Attributes[index].type)
+	{
+	case TypeInt:
+		hashValue = hashTypeInt(value) % this->numPartitions;
+		break;
+	case TypeReal:
+		hashValue = hashTypeReal(value) % this->numPartitions;
+		break;
+	case TypeVarChar:
+		hashValue = hashTypeVarChar(value) % this->numPartitions;
+		break;
+	}
+	
+	free(value);
+	return hashValue;
+}
+
+unsigned int hashTypeInt(void* data)
+{
+	int n;
+	memcpy(&n, (char *)data, sizeof(int));
+	n += ~(n << 15);
+    n ^=  (n >> 10);
+    n +=  (n << 3);
+    n ^=  (n >> 6);
+    n += ~(n << 11);
+    n ^=  (n >> 16);
+    return n;
+}
+
+ unsigned int hashTypeReal(void *data)
+{
+	float f;
+	memcpy(&f, (char *)data, sizeof(float));
+	float f2 = (int)f*7+13;
+    void *n = malloc(sizeof(float));
+	memcpy(n, &f2, sizeof(float));
+    return hashTypeInt(n);
+}
+
+unsigned hashTypeVarChar(void *data)
+{
+	int nameLength;
+	int offset = 0;
+	// string str;
+	memcpy(&nameLength, (char *)data + offset, sizeof(int));
+	offset += sizeof(int);
+	char *str_c = (char *) malloc(nameLength + 1);
+	memcpy(str_c, (char *)data + offset, nameLength);
+	str_c[nameLength] = '\0';
+	// str = string(str_c);
+	
+    unsigned long hash = 17;
+    int c;
+	int count = 0;
+    while (c = *str_c++) {
+        hash = ((hash << 2) + hash) + c; 
+		count++;
+		if(count >= nameLength - 1) break;
+    }
+	// cout<<"String:"<<str<<"  hashValue:"<<hash<<endl;
+    return hash;
+}
+
+string GHJoin::getNameOfPartition(bool isLeft, int index)
+{
+	std::stringstream res;
+	if(isLeft)
+		res << "left_";
+	else res << "right_";
+    res << "join";
+    res << index;
+    res << "_";
+	if(isLeft)
+		res << (this->condition->lhsAttr);
+	else res << (this->condition->rhsAttr);
+    
+    return res.str();
+}
 
 void concatenateLeftAndRight(const void* leftData, const void* rightData, void* data, vector<Attribute> &leftAttributes, vector<Attribute> &rightAttributes)
 {
@@ -962,8 +1564,8 @@ void copyAttribute(const void *from, int &fromOffset, void* to, int &toOffset, c
 			int nameLength;
 			memcpy(&nameLength, (char *)from + fromOffset, sizeof(int));
 			memcpy((char *)to + toOffset, &nameLength, sizeof(int));
-			fromOffset += attr.length;
-			toOffset += attr.length;
+			fromOffset += sizeof(int);
+			toOffset += sizeof(int);
 			memcpy((char *)to + toOffset, (char *)from + fromOffset, nameLength);
 			fromOffset += nameLength;
 			toOffset += nameLength;
@@ -1046,10 +1648,10 @@ int getValueOfAttrByName(const void *data, vector<Attribute> &attrs, string attr
 	        {
 	            if (attrs[i].type == TypeInt)
 	            {
-	            	int v;
+	            	//int v;
 	                memcpy(value, (char *)data + offset, attrs[i].length);
 
-	                memcpy(&v, value, sizeof(int));
+	                //memcpy(&v, value, sizeof(int));
 	                offset += attrs[i].length;
 	                //printf("[getValueOfAttrByName]%s: %-10d\n", attrs[i].name.c_str(), v);
 	            }
