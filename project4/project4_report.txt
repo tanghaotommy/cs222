@@ -1,10 +1,10 @@
 1. Basic information
 Team number (e.g., 01) : 
-#1 Student ID : 
-#1 Student Name : 
+#1 Student ID : 42962450 
+#1 Student Name : Hao Tang
 #2 Student ID : 
-#2 Student Name : 
-OS (bit) :
+#2 Student Name : Le Yu
+OS (bit) : Linux
 gcc version :
 
 
@@ -18,6 +18,7 @@ gcc version :
 
 4. Index Nested Loop Join (If you have implemented this feature)
 - Describe how your grace hash join works.
+For each record in the left iterator, we do a index search on the right to get the record and then join them.
 
 
 5. Grace Hash Join (If you have implemented this feature)
@@ -26,12 +27,14 @@ gcc version :
 
 6. Aggregation
 - Describe how your aggregation (basic, group-based hash) works.
-
+We use unordered_map to map the value of the group by attribute to a set of statistics including sum, count when we initilize the iterator. Then, we iterarively return the results computed in the map.
 
 7. Implementation Detail
 - Have you added your own source file (.cc or .h)?
+No
 
 - Have you implemented any optional features? Then, describe them here.
+Yes, we implemented Grace Hash Join, Aggregation with gorup by.
 
 - Other implementation details:
 
